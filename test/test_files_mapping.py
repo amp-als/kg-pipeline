@@ -1,0 +1,204 @@
+"""
+Unit tests for the ALS KP files RML mapping.
+
+Tests run RMLMapper against the real data/csv/files.csv and assert
+expected triples via SPARQL queries on the output.
+
+Note: files.csv has 8590 rows; RMLMapper takes ~60s on full data.
+The module-scoped fixture runs once per test session.
+"""
+
+import subprocess
+from pathlib import Path
+
+import pyoxigraph
+import pytest
+
+ROOT = Path(__file__).parent.parent
+RMLMAPPER = ROOT / "tools" / "rmlmapper-8.1.0.jar"
+FUNCTIONS_GREL = ROOT / "tools" / "functions_grel.ttl"
+GREL_MAPPING = ROOT / "tools" / "grel_java_mapping.ttl"
+MAPPING = ROOT / "mappings" / "rml" / "files.rml.ttl"
+CSV = ROOT / "data" / "csv" / "files.csv"
+
+ALSKP = "https://alskp.synapse.org/terms#"
+SYNAPSE_BASE = "https://www.synapse.org/Synapse:"
+
+# A known file from the first row of the CSV
+KNOWN_FILE = f"{SYNAPSE_BASE}syn68724262"
+
+
+@pytest.fixture(scope="module")
+def store(tmp_path_factory):
+    """Run RMLMapper once per test session and load output into pyoxigraph."""
+    if not CSV.exists():
+        pytest.skip(f"CSV not found at {CSV}; run extraction first.")
+    if not RMLMAPPER.exists():
+        pytest.skip(f"RMLMapper JAR not found at {RMLMAPPER}.")
+
+    out_ttl = tmp_path_factory.mktemp("rdf") / "files.ttl"
+    subprocess.run(
+        [
+            "java", "-jar", str(RMLMAPPER),
+            "-f", str(FUNCTIONS_GREL),
+            "-f", str(GREL_MAPPING),
+            "-m", str(MAPPING),
+            "-o", str(out_ttl),
+        ],
+        check=True,
+        capture_output=True,
+        cwd=str(ROOT),
+    )
+    st = pyoxigraph.Store()
+    st.load(out_ttl.open("rb"), format=pyoxigraph.RdfFormat.TURTLE)
+    return st
+
+
+def sparql_count(store, query: str) -> int:
+    results = list(store.query(query))
+    return int(results[0]["n"].value)
+
+
+def val(row, key: str) -> str:
+    """Extract string value from a SPARQL result term."""
+    return row[key].value
+
+
+# ---------------------------------------------------------------------------
+# Triple count / class assertions
+# ---------------------------------------------------------------------------
+
+def test_file_count(store):
+    """All 8590 files are mapped as alskp:PortalFile instances."""
+    n = sparql_count(
+        store,
+        f"SELECT (COUNT(?s) AS ?n) WHERE {{ ?s a <{ALSKP}PortalFile> }}"
+    )
+    assert n == 8590, f"Expected 8590 files, got {n}"
+
+
+def test_known_file_type(store):
+    """Known file syn68724262 is typed as alskp:PortalFile."""
+    result = store.query(f"ASK {{ <{KNOWN_FILE}> a <{ALSKP}PortalFile> }}")
+    assert bool(result) is True
+
+
+# ---------------------------------------------------------------------------
+# IRI minting
+# ---------------------------------------------------------------------------
+
+def test_iri_pattern_sample(store):
+    """Spot-check that file IRIs follow the Synapse: pattern (sample 10)."""
+    results = list(store.query(
+        f"SELECT ?s WHERE {{ ?s a <{ALSKP}PortalFile> }} LIMIT 10"
+    ))
+    for row in results:
+        iri = val(row, "s")
+        assert iri.startswith(SYNAPSE_BASE), f"Unexpected IRI: {iri}"
+
+
+# ---------------------------------------------------------------------------
+# Literal properties
+# ---------------------------------------------------------------------------
+
+def test_known_file_name(store):
+    """Known file has the expected name literal."""
+    results = list(store.query(
+        f"SELECT ?name WHERE {{ <{KNOWN_FILE}> <{ALSKP}name> ?name }}"
+    ))
+    assert len(results) == 1
+    assert "fastq" in val(results[0], "name").lower()
+
+
+def test_assay_literal(store):
+    """Known file has assay = RNA-seq."""
+    results = list(store.query(
+        f"SELECT ?a WHERE {{ <{KNOWN_FILE}> <{ALSKP}assay> ?a }}"
+    ))
+    assert len(results) == 1
+    assert val(results[0], "a") == "RNA-seq"
+
+
+def test_species_present(store):
+    """Files with species data have the alskp:species triple."""
+    n = sparql_count(
+        store,
+        f"SELECT (COUNT(?s) AS ?n) WHERE {{ ?s <{ALSKP}species> ?sp }}"
+    )
+    assert n > 0
+
+
+# ---------------------------------------------------------------------------
+# Multi-value: sex (pipe-delimited)
+# ---------------------------------------------------------------------------
+
+def test_sex_split(store):
+    """Known file has sex = Female as a single split value."""
+    results = list(store.query(
+        f"SELECT ?sex WHERE {{ <{KNOWN_FILE}> <{ALSKP}sex> ?sex }}"
+    ))
+    values = {val(r, "sex") for r in results}
+    assert "Female" in values
+
+
+def test_contributor_split(store):
+    """Known file has at least one alskp:contributor triple."""
+    n = sparql_count(
+        store,
+        f"SELECT (COUNT(?c) AS ?n) WHERE {{ <{KNOWN_FILE}> <{ALSKP}contributor> ?c }}"
+    )
+    assert n >= 1
+
+
+# ---------------------------------------------------------------------------
+# Numeric property
+# ---------------------------------------------------------------------------
+
+def test_total_reads_integer(store):
+    """totalReads is typed as xsd:integer for files that have it."""
+    results = list(store.query(
+        f"""
+        SELECT ?n ?dt WHERE {{
+            <{KNOWN_FILE}> <{ALSKP}totalReads> ?n .
+            BIND(DATATYPE(?n) AS ?dt)
+        }}
+        """
+    ))
+    assert len(results) == 1
+    assert "integer" in val(results[0], "dt")
+    assert int(val(results[0], "n")) > 0
+
+
+# ---------------------------------------------------------------------------
+# Null handling
+# ---------------------------------------------------------------------------
+
+def test_no_empty_string_triples(store):
+    """No triples should have an empty string as their object."""
+    n = sparql_count(
+        store,
+        'SELECT (COUNT(*) AS ?n) WHERE { ?s ?p "" }'
+    )
+    assert n == 0, f"Found {n} triples with empty-string objects"
+
+
+# ---------------------------------------------------------------------------
+# External accession IDs
+# ---------------------------------------------------------------------------
+
+def test_biosample_id_present(store):
+    """Known file has a BioSample accession."""
+    results = list(store.query(
+        f"SELECT ?id WHERE {{ <{KNOWN_FILE}> <{ALSKP}bioSampleId> ?id }}"
+    ))
+    assert len(results) == 1
+    assert val(results[0], "id").startswith("SAM")
+
+
+def test_srr_id_present(store):
+    """Known file has an SRR accession."""
+    results = list(store.query(
+        f"SELECT ?id WHERE {{ <{KNOWN_FILE}> <{ALSKP}srrId> ?id }}"
+    ))
+    assert len(results) == 1
+    assert val(results[0], "id").startswith("SRR")

@@ -1,0 +1,375 @@
+################################################################################
+# ALS KP — RML mapping: Datasets (syn66496326)
+# Source CSV: data/csv/datasets.csv
+# Output: data/rdf/datasets.ttl
+#
+# IRI scheme: https://www.synapse.org/Synapse:{id}
+# Prefix: alskp: <https://alskp.synapse.org/terms#>
+################################################################################
+
+@prefix rr:    <http://www.w3.org/ns/r2rml#> .
+@prefix rml:   <http://semweb.mmlab.be/ns/rml#> .
+@prefix fnml:  <http://semweb.mmlab.be/ns/fnml#> .
+@prefix fno:   <https://w3id.org/function/ontology#> .
+@prefix ql:    <http://semweb.mmlab.be/ns/ql#> .
+@prefix rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+@prefix grel:  <http://users.ugent.be/~bjdmeest/function/grel.ttl#> .
+@prefix alskp: <https://alskp.synapse.org/terms#> .
+@prefix biolink: <https://w3id.org/biolink/vocab/> .
+@prefix map:   <https://alskp.synapse.org/mappings/datasets#> .
+
+################################################################################
+# Shared logical source
+################################################################################
+
+map:DatasetsSource a rml:LogicalSource ;
+    rml:source "data/csv/datasets.csv" ;
+    rml:referenceFormulation ql:CSV .
+
+################################################################################
+# Core facts
+################################################################################
+
+map:DatasetCore a rr:TriplesMap ;
+    rdfs:label "Dataset Core" ;
+    rml:logicalSource map:DatasetsSource ;
+    rr:subjectMap [ rr:template "https://www.synapse.org/Synapse:{id}" ; rr:termType rr:IRI ] ;
+    rr:predicateObjectMap [ rr:predicate rdf:type ;
+        rr:objectMap [ rr:constant alskp:Dataset ; rr:termType rr:IRI ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:name ;
+        rr:objectMap [ rml:reference "name" ; rr:datatype xsd:string ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:description ;
+        rr:objectMap [ rml:reference "description" ; rr:datatype xsd:string ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:dataType ;
+        rr:objectMap [ rml:reference "dataType" ; rr:datatype xsd:string ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:dataSubtype ;
+        rr:objectMap [ rml:reference "dataSubtype" ; rr:datatype xsd:string ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:species ;
+        rr:objectMap [ rml:reference "species" ; rr:datatype xsd:string ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:biospecimenSubtype ;
+        rr:objectMap [ rml:reference "biospecimenSubtype" ; rr:datatype xsd:string ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:studyType ;
+        rr:objectMap [ rml:reference "studyType" ; rr:datatype xsd:string ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:source ;
+        rr:objectMap [ rml:reference "source" ; rr:datatype xsd:string ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:sameAs ;
+        rr:objectMap [ rml:reference "sameAs" ; rr:datatype xsd:string ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:geoSuperSeriesId ;
+        rr:objectMap [ rml:reference "GEOSuperSeries" ; rr:datatype xsd:string ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:url ;
+        rr:objectMap [ rml:reference "url" ; rr:datatype xsd:anyURI ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:collection ;
+        rr:objectMap [ rml:reference "collection" ; rr:datatype xsd:string ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:acknowledgementStatement ;
+        rr:objectMap [ rml:reference "acknowledgementStatement" ; rr:datatype xsd:string ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:portalRelease ;
+        rr:objectMap [ rml:reference "portalRelease" ; rr:datatype xsd:string ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:individualCount ;
+        rr:objectMap [ rml:reference "individualCount" ; rr:datatype xsd:string ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:duoCodes ;
+        rr:objectMap [ rml:reference "duoCodes" ; rr:datatype xsd:string ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:datasetCode ;
+        rr:objectMap [ rml:reference "datasetCode" ; rr:datatype xsd:string ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:subject ;
+        rr:objectMap [ rml:reference "subject" ; rr:datatype xsd:string ] ] .
+
+################################################################################
+# Numeric property: participantCount
+################################################################################
+
+map:DatasetParticipantCount a rr:TriplesMap ;
+    rdfs:label "Dataset Participant Count" ;
+    rml:logicalSource map:DatasetsSource ;
+    rr:subjectMap [ rr:template "https://www.synapse.org/Synapse:{id}" ; rr:termType rr:IRI ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:participantCount ;
+        rr:objectMap [ rml:reference "participantCount" ; rr:datatype xsd:integer ] ] .
+
+################################################################################
+# Multi-value: disease
+################################################################################
+
+map:DatasetDisease a rr:TriplesMap ;
+    rdfs:label "Dataset Disease (multi-value)" ;
+    rml:logicalSource map:DatasetsSource ;
+    rr:subjectMap [ rr:template "https://www.synapse.org/Synapse:{id}" ; rr:termType rr:IRI ] ;
+    rr:predicateObjectMap [
+        rr:predicate alskp:disease ;
+        rr:objectMap [
+            a fnml:FunctionTermMap ;
+            rr:datatype xsd:string ;
+            fnml:functionValue [
+                a fno:Execution ;
+                rml:logicalSource map:DatasetsSource ;
+                rr:predicateObjectMap [
+                    rr:predicate fno:executes ;
+                    rr:objectMap [ rr:constant grel:string_split ; rr:termType rr:IRI ]
+                ] ;
+                rr:predicateObjectMap [
+                    rr:predicate grel:valueParameter ;
+                    rr:objectMap [ rml:reference "disease" ; rr:termType rr:Literal ]
+                ] ;
+                rr:predicateObjectMap [
+                    rr:predicate grel:p_string_sep ;
+                    rr:objectMap [ rr:constant "\\|" ; rr:termType rr:Literal ]
+                ]
+            ]
+        ]
+    ] .
+
+################################################################################
+# Multi-value: diseaseSubtype
+################################################################################
+
+map:DatasetDiseaseSubtype a rr:TriplesMap ;
+    rdfs:label "Dataset Disease Subtype (multi-value)" ;
+    rml:logicalSource map:DatasetsSource ;
+    rr:subjectMap [ rr:template "https://www.synapse.org/Synapse:{id}" ; rr:termType rr:IRI ] ;
+    rr:predicateObjectMap [
+        rr:predicate alskp:diseaseSubtype ;
+        rr:objectMap [
+            a fnml:FunctionTermMap ;
+            rr:datatype xsd:string ;
+            fnml:functionValue [
+                a fno:Execution ;
+                rml:logicalSource map:DatasetsSource ;
+                rr:predicateObjectMap [
+                    rr:predicate fno:executes ;
+                    rr:objectMap [ rr:constant grel:string_split ; rr:termType rr:IRI ]
+                ] ;
+                rr:predicateObjectMap [
+                    rr:predicate grel:valueParameter ;
+                    rr:objectMap [ rml:reference "diseaseSubtype" ; rr:termType rr:Literal ]
+                ] ;
+                rr:predicateObjectMap [
+                    rr:predicate grel:p_string_sep ;
+                    rr:objectMap [ rr:constant "\\|" ; rr:termType rr:Literal ]
+                ]
+            ]
+        ]
+    ] .
+
+################################################################################
+# Multi-value: assay
+################################################################################
+
+map:DatasetAssay a rr:TriplesMap ;
+    rdfs:label "Dataset Assay (multi-value)" ;
+    rml:logicalSource map:DatasetsSource ;
+    rr:subjectMap [ rr:template "https://www.synapse.org/Synapse:{id}" ; rr:termType rr:IRI ] ;
+    rr:predicateObjectMap [
+        rr:predicate alskp:assay ;
+        rr:objectMap [
+            a fnml:FunctionTermMap ;
+            rr:datatype xsd:string ;
+            fnml:functionValue [
+                a fno:Execution ;
+                rml:logicalSource map:DatasetsSource ;
+                rr:predicateObjectMap [
+                    rr:predicate fno:executes ;
+                    rr:objectMap [ rr:constant grel:string_split ; rr:termType rr:IRI ]
+                ] ;
+                rr:predicateObjectMap [
+                    rr:predicate grel:valueParameter ;
+                    rr:objectMap [ rml:reference "assay" ; rr:termType rr:Literal ]
+                ] ;
+                rr:predicateObjectMap [
+                    rr:predicate grel:p_string_sep ;
+                    rr:objectMap [ rr:constant "\\|" ; rr:termType rr:Literal ]
+                ]
+            ]
+        ]
+    ] .
+
+################################################################################
+# Multi-value: contributor
+################################################################################
+
+map:DatasetContributor a rr:TriplesMap ;
+    rdfs:label "Dataset Contributor (multi-value)" ;
+    rml:logicalSource map:DatasetsSource ;
+    rr:subjectMap [ rr:template "https://www.synapse.org/Synapse:{id}" ; rr:termType rr:IRI ] ;
+    rr:predicateObjectMap [
+        rr:predicate alskp:contributor ;
+        rr:objectMap [
+            a fnml:FunctionTermMap ;
+            rr:datatype xsd:string ;
+            fnml:functionValue [
+                a fno:Execution ;
+                rml:logicalSource map:DatasetsSource ;
+                rr:predicateObjectMap [
+                    rr:predicate fno:executes ;
+                    rr:objectMap [ rr:constant grel:string_split ; rr:termType rr:IRI ]
+                ] ;
+                rr:predicateObjectMap [
+                    rr:predicate grel:valueParameter ;
+                    rr:objectMap [ rml:reference "contributor" ; rr:termType rr:Literal ]
+                ] ;
+                rr:predicateObjectMap [
+                    rr:predicate grel:p_string_sep ;
+                    rr:objectMap [ rr:constant "\\|" ; rr:termType rr:Literal ]
+                ]
+            ]
+        ]
+    ] .
+
+################################################################################
+# Multi-value: keywords
+################################################################################
+
+map:DatasetKeywords a rr:TriplesMap ;
+    rdfs:label "Dataset Keywords (multi-value)" ;
+    rml:logicalSource map:DatasetsSource ;
+    rr:subjectMap [ rr:template "https://www.synapse.org/Synapse:{id}" ; rr:termType rr:IRI ] ;
+    rr:predicateObjectMap [
+        rr:predicate alskp:keywords ;
+        rr:objectMap [
+            a fnml:FunctionTermMap ;
+            rr:datatype xsd:string ;
+            fnml:functionValue [
+                a fno:Execution ;
+                rml:logicalSource map:DatasetsSource ;
+                rr:predicateObjectMap [
+                    rr:predicate fno:executes ;
+                    rr:objectMap [ rr:constant grel:string_split ; rr:termType rr:IRI ]
+                ] ;
+                rr:predicateObjectMap [
+                    rr:predicate grel:valueParameter ;
+                    rr:objectMap [ rml:reference "keywords" ; rr:termType rr:Literal ]
+                ] ;
+                rr:predicateObjectMap [
+                    rr:predicate grel:p_string_sep ;
+                    rr:objectMap [ rr:constant "\\|" ; rr:termType rr:Literal ]
+                ]
+            ]
+        ]
+    ] .
+
+################################################################################
+# Multi-value: biospecimenType
+################################################################################
+
+map:DatasetBiospecimenType a rr:TriplesMap ;
+    rdfs:label "Dataset Biospecimen Type (multi-value)" ;
+    rml:logicalSource map:DatasetsSource ;
+    rr:subjectMap [ rr:template "https://www.synapse.org/Synapse:{id}" ; rr:termType rr:IRI ] ;
+    rr:predicateObjectMap [
+        rr:predicate alskp:biospecimenType ;
+        rr:objectMap [
+            a fnml:FunctionTermMap ;
+            rr:datatype xsd:string ;
+            fnml:functionValue [
+                a fno:Execution ;
+                rml:logicalSource map:DatasetsSource ;
+                rr:predicateObjectMap [
+                    rr:predicate fno:executes ;
+                    rr:objectMap [ rr:constant grel:string_split ; rr:termType rr:IRI ]
+                ] ;
+                rr:predicateObjectMap [
+                    rr:predicate grel:valueParameter ;
+                    rr:objectMap [ rml:reference "biospecimenType" ; rr:termType rr:Literal ]
+                ] ;
+                rr:predicateObjectMap [
+                    rr:predicate grel:p_string_sep ;
+                    rr:objectMap [ rr:constant "\\|" ; rr:termType rr:Literal ]
+                ]
+            ]
+        ]
+    ] .
+
+################################################################################
+# Multi-value: CNSRegion
+################################################################################
+
+map:DatasetCNSRegion a rr:TriplesMap ;
+    rdfs:label "Dataset CNS Region (multi-value)" ;
+    rml:logicalSource map:DatasetsSource ;
+    rr:subjectMap [ rr:template "https://www.synapse.org/Synapse:{id}" ; rr:termType rr:IRI ] ;
+    rr:predicateObjectMap [
+        rr:predicate alskp:CNSRegion ;
+        rr:objectMap [
+            a fnml:FunctionTermMap ;
+            rr:datatype xsd:string ;
+            fnml:functionValue [
+                a fno:Execution ;
+                rml:logicalSource map:DatasetsSource ;
+                rr:predicateObjectMap [
+                    rr:predicate fno:executes ;
+                    rr:objectMap [ rr:constant grel:string_split ; rr:termType rr:IRI ]
+                ] ;
+                rr:predicateObjectMap [
+                    rr:predicate grel:valueParameter ;
+                    rr:objectMap [ rml:reference "CNSRegion" ; rr:termType rr:Literal ]
+                ] ;
+                rr:predicateObjectMap [
+                    rr:predicate grel:p_string_sep ;
+                    rr:objectMap [ rr:constant "\\|" ; rr:termType rr:Literal ]
+                ]
+            ]
+        ]
+    ] .
+
+################################################################################
+# Multi-value: cellType
+################################################################################
+
+map:DatasetCellType a rr:TriplesMap ;
+    rdfs:label "Dataset Cell Type (multi-value)" ;
+    rml:logicalSource map:DatasetsSource ;
+    rr:subjectMap [ rr:template "https://www.synapse.org/Synapse:{id}" ; rr:termType rr:IRI ] ;
+    rr:predicateObjectMap [
+        rr:predicate alskp:cellType ;
+        rr:objectMap [
+            a fnml:FunctionTermMap ;
+            rr:datatype xsd:string ;
+            fnml:functionValue [
+                a fno:Execution ;
+                rml:logicalSource map:DatasetsSource ;
+                rr:predicateObjectMap [
+                    rr:predicate fno:executes ;
+                    rr:objectMap [ rr:constant grel:string_split ; rr:termType rr:IRI ]
+                ] ;
+                rr:predicateObjectMap [
+                    rr:predicate grel:valueParameter ;
+                    rr:objectMap [ rml:reference "cellType" ; rr:termType rr:Literal ]
+                ] ;
+                rr:predicateObjectMap [
+                    rr:predicate grel:p_string_sep ;
+                    rr:objectMap [ rr:constant "\\|" ; rr:termType rr:Literal ]
+                ]
+            ]
+        ]
+    ] .
+
+################################################################################
+# Multi-value: libraryLayout
+################################################################################
+
+map:DatasetLibraryLayout a rr:TriplesMap ;
+    rdfs:label "Dataset Library Layout (multi-value)" ;
+    rml:logicalSource map:DatasetsSource ;
+    rr:subjectMap [ rr:template "https://www.synapse.org/Synapse:{id}" ; rr:termType rr:IRI ] ;
+    rr:predicateObjectMap [
+        rr:predicate alskp:libraryLayout ;
+        rr:objectMap [
+            a fnml:FunctionTermMap ;
+            rr:datatype xsd:string ;
+            fnml:functionValue [
+                a fno:Execution ;
+                rml:logicalSource map:DatasetsSource ;
+                rr:predicateObjectMap [
+                    rr:predicate fno:executes ;
+                    rr:objectMap [ rr:constant grel:string_split ; rr:termType rr:IRI ]
+                ] ;
+                rr:predicateObjectMap [
+                    rr:predicate grel:valueParameter ;
+                    rr:objectMap [ rml:reference "libraryLayout" ; rr:termType rr:Literal ]
+                ] ;
+                rr:predicateObjectMap [
+                    rr:predicate grel:p_string_sep ;
+                    rr:objectMap [ rr:constant "\\|" ; rr:termType rr:Literal ]
+                ]
+            ]
+        ]
+    ] .

@@ -63,11 +63,20 @@ def _fmt_string_list(v: Any) -> str:
     if s == "":
         return ""
     if s.startswith("["):
+        # Try JSON first, then Python literal (single-quoted lists from raw CSV cache)
         try:
             items = json.loads(s)
             items = [str(i).strip() for i in items if i not in (None, "")]
             return "|".join(items)
         except json.JSONDecodeError:
+            pass
+        try:
+            import ast
+            items = ast.literal_eval(s)
+            if isinstance(items, list):
+                items = [str(i).strip() for i in items if i not in (None, "")]
+                return "|".join(items)
+        except (ValueError, SyntaxError):
             pass
     return s
 
@@ -310,7 +319,10 @@ def _load_raw(table_key: str) -> pd.DataFrame:
 def _save_processed(df: pd.DataFrame, table_key: str) -> None:
     DATA_CSV.mkdir(parents=True, exist_ok=True)
     path = TABLES[table_key]["csv_path"]
-    df.to_csv(path, index=False, quoting=csv.QUOTE_ALL)
+    # Replace empty strings with None so RMLMapper sees truly empty CSV cells
+    # (empty cell → no triple; empty string "" → triple with empty literal).
+    df = df.replace("", None)
+    df.to_csv(path, index=False)
     print(f"  [csv] Saved to {path} ({len(df)} rows, {len(df.columns)} cols)")
 
 

@@ -1,0 +1,247 @@
+################################################################################
+# ALS KP — RML mapping: Portal Files (syn66271104)
+# Source CSV: data/csv/files.csv
+# Output: data/rdf/files.ttl
+#
+# IRI scheme: https://www.synapse.org/Synapse:{id}
+# Prefix: alskp: <https://alskp.synapse.org/terms#>
+################################################################################
+
+@prefix rr:    <http://www.w3.org/ns/r2rml#> .
+@prefix rml:   <http://semweb.mmlab.be/ns/rml#> .
+@prefix fnml:  <http://semweb.mmlab.be/ns/fnml#> .
+@prefix fno:   <https://w3id.org/function/ontology#> .
+@prefix ql:    <http://semweb.mmlab.be/ns/ql#> .
+@prefix rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+@prefix grel:  <http://users.ugent.be/~bjdmeest/function/grel.ttl#> .
+@prefix alskp: <https://alskp.synapse.org/terms#> .
+@prefix map:   <https://alskp.synapse.org/mappings/files#> .
+
+################################################################################
+# Shared logical source
+################################################################################
+
+map:FilesSource a rml:LogicalSource ;
+    rml:source "data/csv/files.csv" ;
+    rml:referenceFormulation ql:CSV .
+
+################################################################################
+# Core facts
+################################################################################
+
+map:FileCore a rr:TriplesMap ;
+    rdfs:label "File Core" ;
+    rml:logicalSource map:FilesSource ;
+    rr:subjectMap [ rr:template "https://www.synapse.org/Synapse:{id}" ; rr:termType rr:IRI ] ;
+    rr:predicateObjectMap [ rr:predicate rdf:type ;
+        rr:objectMap [ rr:constant alskp:PortalFile ; rr:termType rr:IRI ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:name ;
+        rr:objectMap [ rml:reference "name" ; rr:datatype xsd:string ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:fileFormat ;
+        rr:objectMap [ rml:reference "fileFormat" ; rr:datatype xsd:string ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:assay ;
+        rr:objectMap [ rml:reference "assay" ; rr:datatype xsd:string ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:dataType ;
+        rr:objectMap [ rml:reference "dataType" ; rr:datatype xsd:string ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:dataSubtype ;
+        rr:objectMap [ rml:reference "dataSubtype" ; rr:datatype xsd:string ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:species ;
+        rr:objectMap [ rml:reference "species" ; rr:datatype xsd:string ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:biospecimenType ;
+        rr:objectMap [ rml:reference "biospecimenType" ; rr:datatype xsd:string ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:biospecimenSubtype ;
+        rr:objectMap [ rml:reference "biospecimenSubtype" ; rr:datatype xsd:string ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:cellType ;
+        rr:objectMap [ rml:reference "cellType" ; rr:datatype xsd:string ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:isPostMortem ;
+        rr:objectMap [ rml:reference "isPostMortem" ; rr:datatype xsd:string ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:platform ;
+        rr:objectMap [ rml:reference "platform" ; rr:datatype xsd:string ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:libraryLayout ;
+        rr:objectMap [ rml:reference "libraryLayout" ; rr:datatype xsd:string ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:libraryPreparationMethod ;
+        rr:objectMap [ rml:reference "libraryPreparationMethod" ; rr:datatype xsd:string ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:nucleicAcidSource ;
+        rr:objectMap [ rml:reference "nucleicAcidSource" ; rr:datatype xsd:string ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:readLength ;
+        rr:objectMap [ rml:reference "readLength" ; rr:datatype xsd:string ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:genomeReference ;
+        rr:objectMap [ rml:reference "genomeReference" ; rr:datatype xsd:string ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:source ;
+        rr:objectMap [ rml:reference "source" ; rr:datatype xsd:string ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:globalSubjectId ;
+        rr:objectMap [ rml:reference "globalSubjectId" ; rr:datatype xsd:string ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:originalSampleName ;
+        rr:objectMap [ rml:reference "originalSampleName" ; rr:datatype xsd:string ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:originalSubjectId ;
+        rr:objectMap [ rml:reference "originalSubjectId" ; rr:datatype xsd:string ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:CNSRegion ;
+        rr:objectMap [ rml:reference "CNSRegion" ; rr:datatype xsd:string ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:BrodmannArea ;
+        rr:objectMap [ rml:reference "BrodmannArea" ; rr:datatype xsd:string ] ] .
+
+################################################################################
+# Numeric property (totalReads — empty cells produce no triple)
+################################################################################
+
+map:FileTotalReads a rr:TriplesMap ;
+    rdfs:label "File Total Reads" ;
+    rml:logicalSource map:FilesSource ;
+    rr:subjectMap [ rr:template "https://www.synapse.org/Synapse:{id}" ; rr:termType rr:IRI ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:totalReads ;
+        rr:objectMap [ rml:reference "totalReads" ; rr:datatype xsd:integer ] ] .
+
+################################################################################
+# External database accessions (single-value)
+################################################################################
+
+map:FileExtIds a rr:TriplesMap ;
+    rdfs:label "File External IDs" ;
+    rml:logicalSource map:FilesSource ;
+    rr:subjectMap [ rr:template "https://www.synapse.org/Synapse:{id}" ; rr:termType rr:IRI ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:bioProjectId ;
+        rr:objectMap [ rml:reference "BioProject" ; rr:datatype xsd:string ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:bioSampleId ;
+        rr:objectMap [ rml:reference "BioSample" ; rr:datatype xsd:string ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:srrId ;
+        rr:objectMap [ rml:reference "SRR" ; rr:datatype xsd:string ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:srsId ;
+        rr:objectMap [ rml:reference "SRS" ; rr:datatype xsd:string ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:srxId ;
+        rr:objectMap [ rml:reference "SRX" ; rr:datatype xsd:string ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:gseId ;
+        rr:objectMap [ rml:reference "GSE" ; rr:datatype xsd:string ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:gsmId ;
+        rr:objectMap [ rml:reference "GSM" ; rr:datatype xsd:string ] ] ;
+    rr:predicateObjectMap [ rr:predicate alskp:geoSuperSeriesId ;
+        rr:objectMap [ rml:reference "GEOSuperSeries" ; rr:datatype xsd:string ] ] .
+
+################################################################################
+# Multi-value: disease (pipe-delimited → one triple per value)
+################################################################################
+
+map:FileDisease a rr:TriplesMap ;
+    rdfs:label "File Disease (multi-value)" ;
+    rml:logicalSource map:FilesSource ;
+    rr:subjectMap [ rr:template "https://www.synapse.org/Synapse:{id}" ; rr:termType rr:IRI ] ;
+    rr:predicateObjectMap [
+        rr:predicate alskp:disease ;
+        rr:objectMap [
+            a fnml:FunctionTermMap ;
+            rr:datatype xsd:string ;
+            fnml:functionValue [
+                a fno:Execution ;
+                rml:logicalSource map:FilesSource ;
+                rr:predicateObjectMap [
+                    rr:predicate fno:executes ;
+                    rr:objectMap [ rr:constant grel:string_split ; rr:termType rr:IRI ]
+                ] ;
+                rr:predicateObjectMap [
+                    rr:predicate grel:valueParameter ;
+                    rr:objectMap [ rml:reference "disease" ; rr:termType rr:Literal ]
+                ] ;
+                rr:predicateObjectMap [
+                    rr:predicate grel:p_string_sep ;
+                    rr:objectMap [ rr:constant "\\|" ; rr:termType rr:Literal ]
+                ]
+            ]
+        ]
+    ] .
+
+################################################################################
+# Multi-value: sex
+################################################################################
+
+map:FileSex a rr:TriplesMap ;
+    rdfs:label "File Sex (multi-value)" ;
+    rml:logicalSource map:FilesSource ;
+    rr:subjectMap [ rr:template "https://www.synapse.org/Synapse:{id}" ; rr:termType rr:IRI ] ;
+    rr:predicateObjectMap [
+        rr:predicate alskp:sex ;
+        rr:objectMap [
+            a fnml:FunctionTermMap ;
+            rr:datatype xsd:string ;
+            fnml:functionValue [
+                a fno:Execution ;
+                rml:logicalSource map:FilesSource ;
+                rr:predicateObjectMap [
+                    rr:predicate fno:executes ;
+                    rr:objectMap [ rr:constant grel:string_split ; rr:termType rr:IRI ]
+                ] ;
+                rr:predicateObjectMap [
+                    rr:predicate grel:valueParameter ;
+                    rr:objectMap [ rml:reference "sex" ; rr:termType rr:Literal ]
+                ] ;
+                rr:predicateObjectMap [
+                    rr:predicate grel:p_string_sep ;
+                    rr:objectMap [ rr:constant "\\|" ; rr:termType rr:Literal ]
+                ]
+            ]
+        ]
+    ] .
+
+################################################################################
+# Multi-value: contributor
+################################################################################
+
+map:FileContributor a rr:TriplesMap ;
+    rdfs:label "File Contributor (multi-value)" ;
+    rml:logicalSource map:FilesSource ;
+    rr:subjectMap [ rr:template "https://www.synapse.org/Synapse:{id}" ; rr:termType rr:IRI ] ;
+    rr:predicateObjectMap [
+        rr:predicate alskp:contributor ;
+        rr:objectMap [
+            a fnml:FunctionTermMap ;
+            rr:datatype xsd:string ;
+            fnml:functionValue [
+                a fno:Execution ;
+                rml:logicalSource map:FilesSource ;
+                rr:predicateObjectMap [
+                    rr:predicate fno:executes ;
+                    rr:objectMap [ rr:constant grel:string_split ; rr:termType rr:IRI ]
+                ] ;
+                rr:predicateObjectMap [
+                    rr:predicate grel:valueParameter ;
+                    rr:objectMap [ rml:reference "contributor" ; rr:termType rr:Literal ]
+                ] ;
+                rr:predicateObjectMap [
+                    rr:predicate grel:p_string_sep ;
+                    rr:objectMap [ rr:constant "\\|" ; rr:termType rr:Literal ]
+                ]
+            ]
+        ]
+    ] .
+
+################################################################################
+# Multi-value: softwareAndVersion
+################################################################################
+
+map:FileSoftware a rr:TriplesMap ;
+    rdfs:label "File Software And Version (multi-value)" ;
+    rml:logicalSource map:FilesSource ;
+    rr:subjectMap [ rr:template "https://www.synapse.org/Synapse:{id}" ; rr:termType rr:IRI ] ;
+    rr:predicateObjectMap [
+        rr:predicate alskp:softwareAndVersion ;
+        rr:objectMap [
+            a fnml:FunctionTermMap ;
+            rr:datatype xsd:string ;
+            fnml:functionValue [
+                a fno:Execution ;
+                rml:logicalSource map:FilesSource ;
+                rr:predicateObjectMap [
+                    rr:predicate fno:executes ;
+                    rr:objectMap [ rr:constant grel:string_split ; rr:termType rr:IRI ]
+                ] ;
+                rr:predicateObjectMap [
+                    rr:predicate grel:valueParameter ;
+                    rr:objectMap [ rml:reference "softwareAndVersion" ; rr:termType rr:Literal ]
+                ] ;
+                rr:predicateObjectMap [
+                    rr:predicate grel:p_string_sep ;
+                    rr:objectMap [ rr:constant "\\|" ; rr:termType rr:Literal ]
+                ]
+            ]
+        ]
+    ] .
