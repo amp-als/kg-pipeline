@@ -25,5 +25,16 @@ venv/
 *.token
 synapse_config.yaml
 
+# Dagster
+.dagster/
+dagster_home/
+
+# Logs
+logs/
+
+# Editable install
+*.egg-info/
+*.dist-info/
+
 # OS
 .DS_Store

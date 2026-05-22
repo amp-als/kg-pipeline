@@ -1,0 +1,25 @@
+# Use case 3 — Data reuse: files associated with a GEO series
+#
+# Find all portal files belonging to a given GEO series accession.
+# The join is via the shared GSE accession between files (alskp:gseId) and
+# datasets (alskp:geoSuperSeriesId or alskp:sameAs containing the GSE ID).
+#
+# Supports: "What files are available from GEO series GSE115310?"
+#
+# Usage: replace the BIND value with the target GSE accession.
+
+PREFIX alskp: <https://alskp.synapse.org/terms#>
+
+SELECT ?file ?fileName ?fileFormat ?assay ?dataType ?species
+WHERE {
+    BIND("GSE115310" AS ?targetGSE)
+
+    ?file a      alskp:PortalFile ;
+          alskp:gseId      ?targetGSE ;
+          alskp:name       ?fileName ;
+          alskp:fileFormat ?fileFormat .
+    OPTIONAL { ?file alskp:assay    ?assay }
+    OPTIONAL { ?file alskp:dataType ?dataType }
+    OPTIONAL { ?file alskp:species  ?species }
+}
+ORDER BY ?fileName
