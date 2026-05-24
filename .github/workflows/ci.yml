@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  RMLMAPPER_VERSION: "8.1.0"
+  # Suppress Synapse SDK deprecation warnings in CI output
+  PYTHONWARNINGS: "ignore::DeprecationWarning"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      # Cache the RMLMapper JAR by version — avoids a 184 MB download on every run
+      - name: Cache RMLMapper JAR
+        id: cache-rmlmapper
+        uses: actions/cache@v4
+        with:
+          path: tools/rmlmapper-${{ env.RMLMAPPER_VERSION }}.jar
+          key: rmlmapper-${{ env.RMLMAPPER_VERSION }}
+
+      - name: Download RMLMapper
+        if: steps.cache-rmlmapper.outputs.cache-hit != 'true'
+        run: |
+          curl -sL -o tools/rmlmapper-${RMLMAPPER_VERSION}.jar \
+            "https://github.com/RMLio/rmlmapper-java/releases/download/v${RMLMAPPER_VERSION}/rmlmapper-${RMLMAPPER_VERSION}-r380-all.jar"
+
+      # Cache raw Synapse exports by the extraction config hash.
+      # A change to data_sources.yaml or prepare_portal_tables.py invalidates the
+      # cache so the next run re-fetches from Synapse (public, no auth required).
+      - name: Cache raw Synapse exports
+        id: cache-raw
+        uses: actions/cache@v4
+        with:
+          path: data/raw/
+          key: raw-${{ hashFiles('data_sources.yaml', 'scripts/prepare_portal_tables.py') }}
+
+      - name: Extract from Synapse (cache miss)
+        if: steps.cache-raw.outputs.cache-hit != 'true'
+        run: python scripts/prepare_portal_tables.py
+
+      - name: Process from cache (cache hit)
+        if: steps.cache-raw.outputs.cache-hit == 'true'
+        run: python scripts/prepare_portal_tables.py --from-cache
+
+      - name: Check config
+        run: python scripts/prepare_portal_tables.py --check-config
+
+      - name: Validate FK constraints
+        run: python scripts/validate_fks.py
+
+      - name: Run tests
+        run: pytest test/ -x -q --tb=short
