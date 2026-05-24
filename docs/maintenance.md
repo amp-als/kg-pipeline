@@ -1,0 +1,138 @@
+# ALS KP KG Pipeline — Maintenance Runbook
+
+## Routine checks
+
+Run these after any portal data update:
+
+```bash
+make check-config   # config consistency
+make from-cache     # reprocess without hitting Synapse (if raw/ is current)
+make validate       # FK constraints (currently none declared, but log output)
+make test           # 22 unit tests — must all pass
+make sparql         # SPARQL spot-checks — review result counts for anomalies
+```
+
+For a fresh pull from Synapse (e.g. after a portal release):
+```bash
+make extract        # re-fetches both tables live
+make rdf
+make test
+make sparql
+```
+
+## Pinning a new snapshot for `syn66496326`
+
+When the dataset collection has been updated and you want to pin the new version:
+
+1. Create a snapshot (requires write access to the project):
+   ```python
+   import synapseclient
+   syn = synapseclient.login()
+   syn.create_snapshot_version("syn66496326", comment="Snapshot for KG vX release")
+   ```
+2. Note the new version number from the response.
+3. Update `data_sources.yaml`:
+   ```yaml
+   datasets:
+     source_version: <new_version>
+   ```
+4. Delete `data/raw/datasets_raw.csv` to force a fresh pull.
+5. Re-run: `make extract rdf test`.
+
+## Pinning a snapshot for `syn66271104` (file view)
+
+No snapshots exist yet. Before any production release build, create one:
+```python
+import synapseclient
+syn = synapseclient.login()
+syn.create_snapshot_version("syn66271104", comment="Snapshot for KG vX release")
+```
+Then update `data_sources.yaml` `source_version` accordingly.
+
+## Adding a new table
+
+1. **Inspect the table:**
+   ```python
+   import synapseclient, warnings
+   warnings.filterwarnings("ignore")
+   syn = synapseclient.Synapse()
+   cols = list(syn.getTableColumns("synXXXXXXX"))
+   for c in cols: print(f"{c.name}: {c.columnType}")
+   ```
+
+2. **Add to `data_sources.yaml`:**
+   ```yaml
+   my_new_table:
+     synapse_id: synXXXXXXX
+     concrete_type: EntityView   # or TableEntity / MaterializedView
+     note: "Description of what this table contains."
+     source_version: 1           # or null if no snapshots
+   ```
+
+3. **Add to `scripts/prepare_portal_tables.py`:**
+   - Define `MY_TABLE_SELECT` query string
+   - Define `MY_TABLE_COLUMNS` list of `(out_name, src_name, transform)` tuples
+   - Add entry to `TABLES` dict with `csv_path`, `select`, `columns`, `fk_refs`
+
+4. **Extend the ontology (`schema/ontology.ttl`):**
+   - Add a new class (align to BioLink if applicable)
+   - Add datatype and object properties
+
+5. **Write `mappings/rml/my_new_table.rml.ttl`** — copy an existing mapping as template.
+
+6. **Write `test/test_my_new_table_mapping.py`** — cover count, IRI pattern, multi-value splits, nulls.
+
+7. **Add Dagster assets** to `orchestration/dagster_pipeline/assets.py`:
+   - `csv_my_new_table` (CSV asset, depends on Synapse)
+   - `rdf_my_new_table` (RDF asset, depends on CSV asset)
+   - Add both to `defs` in `definitions.py`
+
+8. **Add to Makefile** — extend `CSV_FILES` and `RDF_FILES` variables.
+
+9. **Write a SPARQL use-case query** in `sparql/` that exercises the new table.
+
+## Updating the ontology
+
+The ontology at `schema/ontology.ttl` is the source of truth for property names used in RML mappings.
+When adding a property:
+1. Add the `owl:DatatypeProperty` or `owl:ObjectProperty` declaration to `ontology.ttl`.
+2. Update the relevant `{table}.rml.ttl` mapping to use the new predicate.
+3. Update test assertions if the property is expected to be non-null for known entities.
+
+Avoid renaming properties once the graph is published — use `owl:deprecated` + `owl:equivalentProperty`
+to mark the old name as superseded and add the new name.
+
+## Handling FK violations
+
+`make validate` runs `scripts/validate_fks.py`. Currently no cross-table FK constraints are declared
+(see `fk_refs` in `TABLES`). When constraints are added:
+
+- A pass means every FK value has a matching PK in the referenced table.
+- Failures are **non-blocking** by default — they represent upstream data quality issues to report
+  to the portal owner, not pipeline errors.
+- To fail CI on violations: `python scripts/validate_fks.py --strict`
+
+## Adding a Layer 2 derived relationship
+
+Derived relationships (cross-table edges not directly in source tables) belong in
+`scripts/materialize_*.py` and corresponding Dagster assets. See the reference NF implementation for
+examples (shared donor links, mutation sets).
+
+The most immediate Layer 2 candidate for this pipeline is the file↔dataset link via GEO accession —
+see `docs/architecture.md` for the proposed SPARQL CONSTRUCT pattern.
+
+## Test failures
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| `test_file_count` fails with wrong number | New files added to portal | Update count assertion or make it `>= N` |
+| `test_dataset_count` fails | New datasets added | Update count assertion |
+| `test_no_empty_string_triples` fails | New column added without null handling | Check `_save_processed()` replaces `""` with `None` |
+| `grel:string_split null` errors in RML log | Empty cell passed to split function | Expected; non-fatal. Verify no empty-string triples in output. |
+| `RMLMapper JAR not found` | JAR not downloaded | `make download-jar` |
+
+## Contact
+
+- Portal owner / data manager: see Jira project SKG, issue SKG-132
+- Reference implementation: [nf-osi/kg-pipeline](https://github.com/nf-osi/kg-pipeline/tree/develop)
+- SageBrain data lead: contact for cross-portal alignment questions
