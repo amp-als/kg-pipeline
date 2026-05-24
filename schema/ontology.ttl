@@ -9,8 +9,6 @@
 @prefix rdf:     <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix xsd:     <http://www.w3.org/2001/XMLSchema#> .
-@prefix dcterms: <http://purl.org/dc/terms/> .
-@prefix schema:  <https://schema.org/> .
 
 ################################################################################
 # Ontology declaration
@@ -342,17 +340,26 @@ alskp:collection
     rdfs:comment "Named collection this dataset belongs to." ;
     rdfs:range xsd:string .
 
+alskp:subject
+    a owl:DatatypeProperty ;
+    rdfs:domain alskp:Dataset ;
+    rdfs:label "subject" ;
+    rdfs:comment "Subject classification for the dataset." ;
+    rdfs:range xsd:string .
+
 ################################################################################
-# Object properties (cross-table)
+# Cross-reference properties
 ################################################################################
 
-# sameAs: links a Dataset to an external GEO series entity IRI
+# sameAs: compact URI linking a dataset to an external record (e.g. "geo:GSE115310",
+# "cpath:1956", "srp:SRP413231").  Stored as a string literal because the values
+# use heterogeneous prefixes that are not directly dereferenceable as IRIs.
 alskp:sameAs
-    a owl:ObjectProperty ;
-    rdfs:subPropertyOf owl:sameAs ;
+    a owl:DatatypeProperty ;
     rdfs:label "sameAs" ;
-    rdfs:comment "IRI of the equivalent external resource (e.g. a GEO series)." ;
-    rdfs:domain alskp:Dataset .
+    rdfs:comment "Compact URI of the equivalent external resource." ;
+    rdfs:domain alskp:Dataset ;
+    rdfs:range xsd:string .
 
 # url: landing page IRI for the dataset
 alskp:url
