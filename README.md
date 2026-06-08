@@ -6,9 +6,9 @@ Converts structured metadata from Synapse portal tables into a queryable RDF kno
 
 | Layer | Description | Status |
 |---|---|---|
-| Layer 1 — Core | Portal entity metadata → RDF (files, datasets) | ✅ Bootstrap complete |
-| Layer 2 — Derived | Cross-table relationships (file↔dataset via GEO accession) | Planned |
-| Layer 3 — Publications | PubMed/PMC full-text index | Not started |
+| Core | Portal entity metadata → RDF (files, datasets) | ✅ Bootstrap complete |
+| Derived | Cross-table relationships | Planned |
+| Publications | PubMed/PMC full-text index | Not applicable |
 
 **Graph contents (Layer 1):**
 - `data/rdf/files.ttl` — ~204k triples from 8,590 portal files (syn66271104)
@@ -117,5 +117,4 @@ Run all: `make sparql`
 
 - [Architecture](docs/architecture.md) — design decisions and graph structure
 - [Maintenance runbook](docs/maintenance.md) — how to add tables, update versions, handle data changes
-- [Skill assessment](docs/skill-assessment.md) — experience notes and proposed skill/plugin improvements
 - Reference NF implementation: [nf-osi/kg-pipeline](https://github.com/nf-osi/kg-pipeline/tree/develop)
