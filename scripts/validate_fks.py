@@ -116,7 +116,7 @@ def check_constraint(
 def validate_all(data_dir: Path) -> list[FKResult]:
     constraints = discover_constraints()
     if not constraints:
-        print("No FK constraints declared — nothing to validate.")
+        print("No FK constraints declared.")
         return []
 
     pk_cache: dict[tuple[str, str], set[str]] = {}
@@ -130,7 +130,6 @@ def validate_all(data_dir: Path) -> list[FKResult]:
 
 def print_report(results: list[FKResult]) -> None:
     if not results:
-        print("No FK constraints to report.")
         return
     print(f"\n{'='*60}")
     print(f"FK Validation Report ({len(results)} constraints)")

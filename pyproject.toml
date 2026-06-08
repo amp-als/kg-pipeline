@@ -19,5 +19,8 @@ dependencies = [
 where = ["."]
 include = ["orchestration*", "scripts*"]
 
+[tool.pytest.ini_options]
+asyncio_default_fixture_loop_scope = "function"
+
 [tool.dagster]
 module_name = "orchestration.dagster_pipeline.definitions"

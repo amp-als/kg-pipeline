@@ -8,7 +8,7 @@ Run these after any portal data update:
 make check-config   # config consistency
 make from-cache     # reprocess without hitting Synapse (if raw/ is current)
 make validate       # FK constraints (currently none declared, but log output)
-make test           # 22 unit tests — must all pass
+make test           # 23 unit tests — must all pass
 make sparql         # SPARQL spot-checks — review result counts for anomalies
 ```
 
@@ -130,6 +130,7 @@ see `docs/architecture.md` for the proposed SPARQL CONSTRUCT pattern.
 | `test_no_empty_string_triples` fails | New column added without null handling | Check `_save_processed()` replaces `""` with `None` |
 | `grel:string_split null` errors in RML log | Empty cell passed to split function | Expected; non-fatal. Verify no empty-string triples in output. |
 | `RMLMapper JAR not found` | JAR not downloaded | `make download-jar` |
+| SPARQL use-case returns duplicate rows | Multi-value disease field: `CONTAINS(LCASE(?disease), "als")` also matches "Pre-fALS" | Use exact match: `FILTER(?disease = "ALS")` instead of substring match |
 
 ## Contact
 

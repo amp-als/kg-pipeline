@@ -29,7 +29,7 @@ make all
 # Or step by step:
 make extract        # pull from Synapse → data/csv/
 make rdf            # RML mappings → data/rdf/
-make test           # 22 pytest assertions
+make test           # 23 pytest assertions
 make sparql         # SPARQL use-case spot-checks
 make validate       # FK constraint check
 ```
@@ -39,7 +39,7 @@ make validate       # FK constraint check
 make from-cache
 ```
 
-**Launch Dagster UI:**
+**Launch Dagster UI** (requires full package install — `pip install -e .`):
 ```bash
 make dagster
 # then open http://localhost:3000

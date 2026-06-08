@@ -12,7 +12,7 @@ WHERE {
           alskp:isPostMortem "True" ;
           alskp:species     "Homo sapiens" ;
           alskp:disease     ?disease .
-    FILTER(CONTAINS(LCASE(STR(?disease)), "als"))
+    FILTER(?disease = "ALS")
     OPTIONAL { ?file alskp:fileFormat     ?fileFormat }
     OPTIONAL { ?file alskp:assay          ?assay }
     OPTIONAL { ?file alskp:biospecimenType ?biospecimenType }

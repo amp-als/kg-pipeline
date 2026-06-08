@@ -66,11 +66,13 @@ data/rdf/files.ttl: mappings/rml/files.rml.ttl data/csv/files.csv $(RMLMAPPER)
 	@mkdir -p data/rdf logs
 	java $(JAVA_ARGS) -m mappings/rml/files.rml.ttl -o $@ 2>logs/files_rml.log
 	@echo "Generated $@ ($$( wc -l < $@ ) triples)"
+	@echo "  (string_split null errors in logs/files_rml.log are expected for empty cells)"
 
 data/rdf/datasets.ttl: mappings/rml/datasets.rml.ttl data/csv/datasets.csv $(RMLMAPPER)
 	@mkdir -p data/rdf logs
 	java $(JAVA_ARGS) -m mappings/rml/datasets.rml.ttl -o $@ 2>logs/datasets_rml.log
 	@echo "Generated $@ ($$( wc -l < $@ ) triples)"
+	@echo "  (string_split null errors in logs/datasets_rml.log are expected for empty cells)"
 
 # ---------------------------------------------------------------------------
 # FK validation

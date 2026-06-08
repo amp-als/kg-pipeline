@@ -56,8 +56,9 @@ SPARQL queries / pytest assertions
 
 ## Multi-value handling
 
-Portal columns like `disease`, `assay`, `contributor` are comma-separated lists in the portal but
-stored as pipe-delimited strings in the processed CSVs. RML uses `grel:string_split` with `\\|`
+Portal columns like `disease`, `assay`, `contributor` are multi-value fields. The Synapse SDK returns
+them as Python lists; the portal UI displays them comma-separated. The extraction script normalises
+both representations to pipe-delimited strings in the processed CSVs. RML uses `grel:string_split` with `\\|`
 as separator to produce one triple per value:
 
 ```turtle
