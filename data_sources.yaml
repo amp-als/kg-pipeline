@@ -1,0 +1,26 @@
+# ALS Knowledge Portal — KG pipeline data sources
+# Portal project: syn64892175  (https://www.synapse.org/Synapse:syn64892175/tables)
+# Bootstrapped: 2026-05-21
+
+sources:
+
+  files:
+    synapse_id: syn66271104
+    concrete_type: EntityView
+    note: >
+      File-level metadata view across all ALS KP portal data files.
+      Contains assay, disease, species, biospecimen, and sequencing metadata.
+    source_version: null
+    reproducibility_note: >
+      No snapshot versions exist for this EntityView as of 2026-05-21.
+      The table is queried live and results may change as new files are added.
+      Create a snapshot before pinning a release version.
+
+  datasets:
+    synapse_id: syn66496326
+    concrete_type: EntityView
+    note: >
+      Curated dataset collection. Each row is a Synapse Dataset entity with
+      study-level metadata including GEO cross-references and disease annotations.
+      25 datasets as of snapshot v2.
+    source_version: 2

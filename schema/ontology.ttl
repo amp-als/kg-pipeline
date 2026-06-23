@@ -1,0 +1,369 @@
+# ALS Knowledge Portal — Internal Ontology
+# Namespace: https://alskp.synapse.org/terms#  (prefix: alskp:)
+# Pattern: BioLink alignment for well-known types; portal-specific classes for gaps.
+# Version: 0.1  (bootstrap — covers Layer 1 tables: files, datasets)
+
+@prefix alskp:   <https://alskp.synapse.org/terms#> .
+@prefix biolink: <https://w3id.org/biolink/vocab/> .
+@prefix owl:     <http://www.w3.org/2002/07/owl#> .
+@prefix rdf:     <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:    <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd:     <http://www.w3.org/2001/XMLSchema#> .
+
+################################################################################
+# Ontology declaration
+################################################################################
+
+<https://alskp.synapse.org/ontology>
+    a owl:Ontology ;
+    rdfs:label "ALS Knowledge Portal Ontology" ;
+    rdfs:comment "Internal ontology for the ALS Knowledge Portal knowledge graph pipeline. Covers portal file and dataset entities." ;
+    owl:versionInfo "0.1" .
+
+################################################################################
+# Classes
+################################################################################
+
+# -- PortalFile ----------------------------------------------------------------
+# An individual data file registered in the ALS KP portal file view.
+# BioLink does not have a clean "data file" type (its DataFile is rarely used);
+# we define a portal-specific class here without BioLink alignment.
+
+alskp:PortalFile
+    a owl:Class ;
+    rdfs:label "Portal File" ;
+    rdfs:comment "An individual data file registered in the ALS KP Synapse file view (syn66271104)." .
+
+# -- Dataset -------------------------------------------------------------------
+# A curated study-level dataset in the ALS KP Dataset Collection.
+# biolink:Dataset is the appropriate BioLink type.
+
+alskp:Dataset
+    a owl:Class ;
+    rdfs:subClassOf biolink:Dataset ;
+    rdfs:label "ALS KP Dataset" ;
+    rdfs:comment "A study-level dataset entry in the ALS KP Dataset Collection (syn66496326)." .
+
+################################################################################
+# Shared datatype properties
+################################################################################
+
+alskp:name
+    a owl:DatatypeProperty ;
+    rdfs:label "name" ;
+    rdfs:range xsd:string .
+
+alskp:description
+    a owl:DatatypeProperty ;
+    rdfs:label "description" ;
+    rdfs:range xsd:string .
+
+alskp:assay
+    a owl:DatatypeProperty ;
+    rdfs:label "assay" ;
+    rdfs:comment "Experimental assay type (e.g. RNA-seq, ChIP-seq, ATAC-seq)." ;
+    rdfs:range xsd:string .
+
+alskp:dataType
+    a owl:DatatypeProperty ;
+    rdfs:label "dataType" ;
+    rdfs:comment "High-level data type category (e.g. transcriptomics, epigenomics)." ;
+    rdfs:range xsd:string .
+
+alskp:dataSubtype
+    a owl:DatatypeProperty ;
+    rdfs:label "dataSubtype" ;
+    rdfs:comment "Data subtype (e.g. bulk, raw, processed)." ;
+    rdfs:range xsd:string .
+
+alskp:disease
+    a owl:DatatypeProperty ;
+    rdfs:label "disease" ;
+    rdfs:comment "Disease or condition associated with the entity (multi-value, pipe-delimited in CSV)." ;
+    rdfs:range xsd:string .
+
+alskp:species
+    a owl:DatatypeProperty ;
+    rdfs:label "species" ;
+    rdfs:comment "Organism species (e.g. Homo sapiens)." ;
+    rdfs:range xsd:string .
+
+alskp:biospecimenType
+    a owl:DatatypeProperty ;
+    rdfs:label "biospecimenType" ;
+    rdfs:comment "Type of biospecimen (e.g. brain, primary cell culture)." ;
+    rdfs:range xsd:string .
+
+alskp:biospecimenSubtype
+    a owl:DatatypeProperty ;
+    rdfs:label "biospecimenSubtype" ;
+    rdfs:range xsd:string .
+
+alskp:cellType
+    a owl:DatatypeProperty ;
+    rdfs:label "cellType" ;
+    rdfs:range xsd:string .
+
+alskp:CNSRegion
+    a owl:DatatypeProperty ;
+    rdfs:label "CNS region" ;
+    rdfs:comment "Central nervous system region from which the sample was derived." ;
+    rdfs:range xsd:string .
+
+alskp:contributor
+    a owl:DatatypeProperty ;
+    rdfs:label "contributor" ;
+    rdfs:comment "Contributing researcher or institution (multi-value)." ;
+    rdfs:range xsd:string .
+
+alskp:source
+    a owl:DatatypeProperty ;
+    rdfs:label "source" ;
+    rdfs:comment "Data source or repository name (e.g. Gene Expression Omnibus)." ;
+    rdfs:range xsd:string .
+
+################################################################################
+# PortalFile datatype properties
+################################################################################
+
+alskp:fileFormat
+    a owl:DatatypeProperty ;
+    rdfs:domain alskp:PortalFile ;
+    rdfs:label "file format" ;
+    rdfs:comment "File format (e.g. fastq, bam, csv)." ;
+    rdfs:range xsd:string .
+
+alskp:sex
+    a owl:DatatypeProperty ;
+    rdfs:domain alskp:PortalFile ;
+    rdfs:label "sex" ;
+    rdfs:comment "Biological sex of sample donor (multi-value)." ;
+    rdfs:range xsd:string .
+
+alskp:isPostMortem
+    a owl:DatatypeProperty ;
+    rdfs:domain alskp:PortalFile ;
+    rdfs:label "isPostMortem" ;
+    rdfs:comment "Whether the sample is post-mortem tissue." ;
+    rdfs:range xsd:string .
+
+alskp:platform
+    a owl:DatatypeProperty ;
+    rdfs:domain alskp:PortalFile ;
+    rdfs:label "platform" ;
+    rdfs:comment "Sequencing or array platform used." ;
+    rdfs:range xsd:string .
+
+alskp:libraryLayout
+    a owl:DatatypeProperty ;
+    rdfs:label "libraryLayout" ;
+    rdfs:comment "Sequencing library layout (e.g. paired-end, single-end)." ;
+    rdfs:range xsd:string .
+
+alskp:libraryPreparationMethod
+    a owl:DatatypeProperty ;
+    rdfs:domain alskp:PortalFile ;
+    rdfs:label "libraryPreparationMethod" ;
+    rdfs:range xsd:string .
+
+alskp:nucleicAcidSource
+    a owl:DatatypeProperty ;
+    rdfs:domain alskp:PortalFile ;
+    rdfs:label "nucleicAcidSource" ;
+    rdfs:range xsd:string .
+
+alskp:readLength
+    a owl:DatatypeProperty ;
+    rdfs:domain alskp:PortalFile ;
+    rdfs:label "readLength" ;
+    rdfs:range xsd:string .
+
+alskp:totalReads
+    a owl:DatatypeProperty ;
+    rdfs:domain alskp:PortalFile ;
+    rdfs:label "totalReads" ;
+    rdfs:range xsd:integer .
+
+alskp:genomeReference
+    a owl:DatatypeProperty ;
+    rdfs:domain alskp:PortalFile ;
+    rdfs:label "genomeReference" ;
+    rdfs:range xsd:string .
+
+alskp:softwareAndVersion
+    a owl:DatatypeProperty ;
+    rdfs:domain alskp:PortalFile ;
+    rdfs:label "softwareAndVersion" ;
+    rdfs:comment "Software and version used to produce this file (multi-value)." ;
+    rdfs:range xsd:string .
+
+alskp:globalSubjectId
+    a owl:DatatypeProperty ;
+    rdfs:domain alskp:PortalFile ;
+    rdfs:label "globalSubjectId" ;
+    rdfs:comment "Cross-study subject identifier." ;
+    rdfs:range xsd:string .
+
+alskp:originalSampleName
+    a owl:DatatypeProperty ;
+    rdfs:domain alskp:PortalFile ;
+    rdfs:label "originalSampleName" ;
+    rdfs:range xsd:string .
+
+alskp:originalSubjectId
+    a owl:DatatypeProperty ;
+    rdfs:domain alskp:PortalFile ;
+    rdfs:label "originalSubjectId" ;
+    rdfs:range xsd:string .
+
+alskp:BrodmannArea
+    a owl:DatatypeProperty ;
+    rdfs:domain alskp:PortalFile ;
+    rdfs:label "Brodmann area" ;
+    rdfs:comment "Brodmann area of the brain sample." ;
+    rdfs:range xsd:string .
+
+# External database cross-references (files)
+
+alskp:bioProjectId
+    a owl:DatatypeProperty ;
+    rdfs:domain alskp:PortalFile ;
+    rdfs:label "BioProject ID" ;
+    rdfs:range xsd:string .
+
+alskp:bioSampleId
+    a owl:DatatypeProperty ;
+    rdfs:domain alskp:PortalFile ;
+    rdfs:label "BioSample ID" ;
+    rdfs:range xsd:string .
+
+alskp:srrId
+    a owl:DatatypeProperty ;
+    rdfs:domain alskp:PortalFile ;
+    rdfs:label "SRR accession" ;
+    rdfs:range xsd:string .
+
+alskp:srsId
+    a owl:DatatypeProperty ;
+    rdfs:domain alskp:PortalFile ;
+    rdfs:label "SRS accession" ;
+    rdfs:range xsd:string .
+
+alskp:srxId
+    a owl:DatatypeProperty ;
+    rdfs:domain alskp:PortalFile ;
+    rdfs:label "SRX accession" ;
+    rdfs:range xsd:string .
+
+alskp:gseId
+    a owl:DatatypeProperty ;
+    rdfs:domain alskp:PortalFile ;
+    rdfs:label "GEO Series (GSE) accession" ;
+    rdfs:range xsd:string .
+
+alskp:gsmId
+    a owl:DatatypeProperty ;
+    rdfs:domain alskp:PortalFile ;
+    rdfs:label "GEO Sample (GSM) accession" ;
+    rdfs:range xsd:string .
+
+alskp:geoSuperSeriesId
+    a owl:DatatypeProperty ;
+    rdfs:label "GEO SuperSeries accession" ;
+    rdfs:range xsd:string .
+
+################################################################################
+# Dataset datatype properties
+################################################################################
+
+alskp:studyType
+    a owl:DatatypeProperty ;
+    rdfs:domain alskp:Dataset ;
+    rdfs:label "studyType" ;
+    rdfs:comment "Type of study (e.g. experimental study, meta-analysis)." ;
+    rdfs:range xsd:string .
+
+alskp:keywords
+    a owl:DatatypeProperty ;
+    rdfs:domain alskp:Dataset ;
+    rdfs:label "keywords" ;
+    rdfs:comment "Subject keywords (multi-value)." ;
+    rdfs:range xsd:string .
+
+alskp:diseaseSubtype
+    a owl:DatatypeProperty ;
+    rdfs:domain alskp:Dataset ;
+    rdfs:label "diseaseSubtype" ;
+    rdfs:range xsd:string .
+
+alskp:acknowledgementStatement
+    a owl:DatatypeProperty ;
+    rdfs:domain alskp:Dataset ;
+    rdfs:label "acknowledgementStatement" ;
+    rdfs:range xsd:string .
+
+alskp:portalRelease
+    a owl:DatatypeProperty ;
+    rdfs:domain alskp:Dataset ;
+    rdfs:label "portalRelease" ;
+    rdfs:range xsd:string .
+
+alskp:individualCount
+    a owl:DatatypeProperty ;
+    rdfs:domain alskp:Dataset ;
+    rdfs:label "individualCount" ;
+    rdfs:range xsd:string .
+
+alskp:participantCount
+    a owl:DatatypeProperty ;
+    rdfs:domain alskp:Dataset ;
+    rdfs:label "participantCount" ;
+    rdfs:range xsd:integer .
+
+alskp:duoCodes
+    a owl:DatatypeProperty ;
+    rdfs:domain alskp:Dataset ;
+    rdfs:label "DUO codes" ;
+    rdfs:comment "Data Use Ontology codes governing data access." ;
+    rdfs:range xsd:string .
+
+alskp:datasetCode
+    a owl:DatatypeProperty ;
+    rdfs:domain alskp:Dataset ;
+    rdfs:label "datasetCode" ;
+    rdfs:range xsd:string .
+
+alskp:collection
+    a owl:DatatypeProperty ;
+    rdfs:domain alskp:Dataset ;
+    rdfs:label "collection" ;
+    rdfs:comment "Named collection this dataset belongs to." ;
+    rdfs:range xsd:string .
+
+alskp:subject
+    a owl:DatatypeProperty ;
+    rdfs:domain alskp:Dataset ;
+    rdfs:label "subject" ;
+    rdfs:comment "Subject classification for the dataset." ;
+    rdfs:range xsd:string .
+
+################################################################################
+# Cross-reference properties
+################################################################################
+
+# sameAs: compact URI linking a dataset to an external record (e.g. "geo:GSE115310",
+# "cpath:1956", "srp:SRP413231").  Stored as a string literal because the values
+# use heterogeneous prefixes that are not directly dereferenceable as IRIs.
+alskp:sameAs
+    a owl:DatatypeProperty ;
+    rdfs:label "sameAs" ;
+    rdfs:comment "Compact URI of the equivalent external resource." ;
+    rdfs:domain alskp:Dataset ;
+    rdfs:range xsd:string .
+
+# url: landing page IRI for the dataset
+alskp:url
+    a owl:DatatypeProperty ;
+    rdfs:domain alskp:Dataset ;
+    rdfs:label "url" ;
+    rdfs:range xsd:anyURI .

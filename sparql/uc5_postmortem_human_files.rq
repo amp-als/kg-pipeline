@@ -1,0 +1,23 @@
+# Use case 5 — Data reuse: post-mortem human files for a given disease
+#
+# Find files from post-mortem human tissue for ALS.
+# Supports: "What post-mortem human tissue data is available for ALS?"
+
+PREFIX alskp: <https://alskp.synapse.org/terms#>
+
+SELECT ?file ?fileName ?fileFormat ?assay ?biospecimenType ?CNSRegion ?sex
+WHERE {
+    ?file a alskp:PortalFile ;
+          alskp:name        ?fileName ;
+          alskp:isPostMortem "True" ;
+          alskp:species     "Homo sapiens" ;
+          alskp:disease     ?disease .
+    FILTER(?disease = "ALS")
+    OPTIONAL { ?file alskp:fileFormat     ?fileFormat }
+    OPTIONAL { ?file alskp:assay          ?assay }
+    OPTIONAL { ?file alskp:biospecimenType ?biospecimenType }
+    OPTIONAL { ?file alskp:CNSRegion      ?CNSRegion }
+    OPTIONAL { ?file alskp:sex            ?sex }
+}
+ORDER BY ?fileName
+LIMIT 50

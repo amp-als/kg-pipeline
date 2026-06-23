@@ -1,0 +1,15 @@
+# Use case 2 — Landscape analysis: assay types per disease across all datasets
+#
+# Summary of how many datasets cover each (disease, assay) combination.
+# Supports: "What assays have been used to study each disease in the portal?"
+
+PREFIX alskp: <https://alskp.synapse.org/terms#>
+
+SELECT ?disease ?assay (COUNT(DISTINCT ?dataset) AS ?datasetCount)
+WHERE {
+    ?dataset a alskp:Dataset ;
+             alskp:disease ?disease ;
+             alskp:assay   ?assay .
+}
+GROUP BY ?disease ?assay
+ORDER BY DESC(?datasetCount) ?disease ?assay

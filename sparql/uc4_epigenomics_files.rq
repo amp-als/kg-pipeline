@@ -1,0 +1,17 @@
+# Use case 4 — Landscape analysis: epigenomics files by CNS region
+#
+# Count files by CNS region for epigenomics data types.
+# Supports: "What brain regions have epigenomics data in the portal?"
+
+PREFIX alskp: <https://alskp.synapse.org/terms#>
+
+SELECT ?CNSRegion ?assay (COUNT(?file) AS ?fileCount)
+WHERE {
+    ?file a alskp:PortalFile ;
+          alskp:dataType  ?dataType ;
+          alskp:CNSRegion ?CNSRegion ;
+          alskp:assay     ?assay .
+    FILTER(CONTAINS(LCASE(STR(?dataType)), "epigenomics"))
+}
+GROUP BY ?CNSRegion ?assay
+ORDER BY DESC(?fileCount)

@@ -1,0 +1,40 @@
+# Data files (large, generated)
+data/csv/
+data/rdf/
+data/raw/
+
+# RMLMapper JAR (binary, download separately)
+tools/rmlmapper-*.jar
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# Synapse cache
+.synapseCache/
+
+# Secrets
+.env
+*.token
+synapse_config.yaml
+
+# Dagster
+.dagster/
+dagster_home/
+
+# Logs
+logs/
+
+# Editable install
+*.egg-info/
+*.dist-info/
+
+# OS
+.DS_Store

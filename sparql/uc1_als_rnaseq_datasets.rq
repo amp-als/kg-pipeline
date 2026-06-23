@@ -1,0 +1,20 @@
+# Use case 1 — Resource discovery: ALS RNA-seq datasets
+#
+# Find all datasets that involve ALS and have RNA-seq (or related) assay data.
+# Supports: "What RNA-seq datasets are available for ALS?"
+
+PREFIX alskp: <https://alskp.synapse.org/terms#>
+PREFIX rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+
+SELECT ?dataset ?name ?source ?url
+WHERE {
+    ?dataset a alskp:Dataset ;
+             alskp:name    ?name ;
+             alskp:disease ?disease ;
+             alskp:assay   ?assay .
+    FILTER(CONTAINS(LCASE(STR(?disease)), "als"))
+    FILTER(CONTAINS(LCASE(STR(?assay)), "rna-seq"))
+    OPTIONAL { ?dataset alskp:source ?source }
+    OPTIONAL { ?dataset alskp:url    ?url }
+}
+ORDER BY ?name
