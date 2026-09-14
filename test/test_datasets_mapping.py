@@ -23,6 +23,7 @@ MAPPING = ROOT / "mappings" / "rml" / "datasets.rml.ttl"
 CSV = ROOT / "data" / "csv" / "datasets.csv"
 
 ALSKP = "https://alskp.synapse.org/terms#"
+BIOLINK = "https://w3id.org/biolink/vocab/"
 SYNAPSE_BASE = "https://www.synapse.org/Synapse:"
 
 # One known dataset to use as an anchor in tests. Rows can be retired from the
@@ -112,6 +113,32 @@ def test_known_dataset_type(store, known_dataset):
     """Known dataset syn67713129 is typed as alskp:Dataset."""
     result = store.query(f"ASK {{ <{known_dataset}> a <{ALSKP}Dataset> }}")
     assert bool(result) is True
+
+
+def test_biolink_dataset_type_materialized(store):
+    """alskp:Dataset rdfs:subClassOf biolink:Dataset is asserted, not inferred.
+
+    Graph runs without reasoning, so every alskp:Dataset must also carry an
+    explicit biolink:Dataset type or BioLink-level queries return nothing.
+    """
+    missing = list(store.query(
+        f"SELECT ?s WHERE {{ ?s a <{ALSKP}Dataset> . "
+        f"FILTER NOT EXISTS {{ ?s a <{BIOLINK}Dataset> }} }}"
+    ))
+    assert not missing, (
+        f"{len(missing)} alskp:Dataset instances lack an explicit biolink:Dataset type: "
+        f"{[val(r, 's') for r in missing[:5]]}"
+    )
+
+
+def test_biolink_dataset_count_matches(store):
+    """No spurious biolink:Dataset instances beyond the mapped portal datasets."""
+    expected = csv_subject_count(CSV)
+    n = sparql_count(
+        store,
+        f"SELECT (COUNT(?s) AS ?n) WHERE {{ ?s a <{BIOLINK}Dataset> }}"
+    )
+    assert n == expected, f"Expected {expected} biolink:Dataset instances, got {n}"
 
 
 # ---------------------------------------------------------------------------
