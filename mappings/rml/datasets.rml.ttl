@@ -39,7 +39,7 @@ map:DatasetCore a rr:TriplesMap ;
     rr:predicateObjectMap [ rr:predicate rdf:type ;
         rr:objectMap [ rr:constant alskp:Dataset ; rr:termType rr:IRI ] ] ;
     # Materialized superclass: alskp:Dataset rdfs:subClassOf biolink:Dataset in
-    # schema/ontology.ttl, but GraphDB runs without reasoning, so the inferred
+    # schema/ontology.ttl, but graph currently without reasoning, so the inferred
     # type is asserted here instead of derived at query time.
     rr:predicateObjectMap [ rr:predicate rdf:type ;
         rr:objectMap [ rr:constant biolink:Dataset ; rr:termType rr:IRI ] ] ;
