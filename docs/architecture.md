@@ -30,7 +30,7 @@ This makes every portal entity directly dereferenceable in a browser.
 Bidirectional subsumption (`equivalentClass`) forces a reasoner to infer that any `biolink:Dataset` is an `alskp:Dataset`, which is false. Subclassing gives the correct one-directional relationship.
 
 **Materialized superclass types:**
-The GraphDB repository runs without reasoning, so nothing derives `biolink:Dataset`
+The graph for this data can run without reasoning, so nothing derives `biolink:Dataset`
 from the `rdfs:subClassOf` axiom at query time. `mappings/rml/datasets.rml.ttl`
 therefore asserts both `rdf:type alskp:Dataset` and `rdf:type biolink:Dataset` on
 every dataset subject, and `test/test_datasets_mapping.py` asserts the two type
