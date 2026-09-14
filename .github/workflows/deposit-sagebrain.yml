@@ -2,13 +2,20 @@
 #
 # The Sage Brain append-only ingestion pipeline watches the bucket for
 # `{portal}/YYYY-MM-DD/manifest.ttl` object-created events and bulk-loads the
-# whole dated folder into its own Neptune named graph (`urn:sagebrain:als:<date>`).
+# snapshot into its own Neptune named graph (`urn:sagebrain:als:<date>`).
 # See https://github.com/Sage-Bionetworks-IT/sagebrain-infra/pull/39.
 #
 #   s3://<bucket>/als/YYYY-MM-DD/
-#     schema/ontology.ttl      <- ontology
-#     data/rdf/*.ttl           <- generated graph data
-#     manifest.ttl             <- written LAST; its upload is the load trigger
+#     data/schema/ontology.ttl  <- ontology
+#     data/rdf/*.ttl            <- generated graph data
+#     data/_provenance.ttl      <- build lineage, inside the load path
+#     manifest.ttl              <- written LAST; its upload is the load trigger
+#
+# Everything loadable sits under `data/`, which satisfies both the current loader
+# (loads the whole dated folder) and sagebrain-infra#42 (narrows the load path to
+# `{portal}/YYYY-MM-DD/data/`). Neptune's bulk loader takes a literal prefix with
+# no glob or extension filter and runs with failOnError=TRUE, so `data/` holds
+# Turtle and nothing else.
 #
 # Requires repository secret SAGEBRAIN_ROLE_ARN: the IAM role in the sagebrain
 # account that this repo assumes via GitHub OIDC (no long-lived keys).
@@ -199,7 +206,7 @@ jobs:
               alskp:buildRunId "${{ github.run_id }}" ;
               alskp:buildTriggerEvent "${{ github.event_name }}" ;
               void:triples ${TRIPLES} ;
-              void:dataDump <${PREFIX}/> .
+              void:dataDump <${PREFIX}/data/> .
           EOF
           cat manifest.ttl
 
@@ -212,13 +219,20 @@ jobs:
         # renamed or dropped since — `cp` would leave stale .ttl behind and the
         # bulk loader ingests every object under the prefix.
         #
+        # _provenance.ttl is the manifest's triples deposited *inside* the load
+        # path. sagebrain-infra#42 moves the sentinel out of the load path, so the
+        # manifest alone would no longer reach the graph; this copy keeps build
+        # lineage queryable. Under either loader the two files carry identical
+        # triples in one named graph, so there is nothing to de-duplicate.
+        #
         # manifest.ttl goes LAST and on its own: its ObjectCreated event is the
         # completion sentinel that triggers the Neptune load. Re-uploading it for
         # an existing date yields a new etag, which the loader treats as a genuine
         # re-publish and reloads.
         run: |
-          aws s3 sync schema/   "$PREFIX/schema/"   --delete --exclude "*" --include "*.ttl"
-          aws s3 sync data/rdf/ "$PREFIX/data/rdf/" --delete --exclude "*" --include "*.ttl"
+          aws s3 sync schema/   "$PREFIX/data/schema/" --delete --exclude "*" --include "*.ttl"
+          aws s3 sync data/rdf/ "$PREFIX/data/rdf/"    --delete --exclude "*" --include "*.ttl"
+          aws s3 cp manifest.ttl "$PREFIX/data/_provenance.ttl"
           aws s3 cp manifest.ttl "$PREFIX/manifest.ttl"
           {
             echo ""

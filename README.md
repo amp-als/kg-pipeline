@@ -111,7 +111,7 @@ Sage Brain S3 bucket, where an [append-only ingestion pipeline](https://github.c
 bulk-loads each dated snapshot into its own Neptune named graph.
 
 - **Triggers:** `v*` tag push (release path) or manual run (with optional `snapshot_date` and `dry_run`)
-- **Layout:** `s3://<bucket>/als/YYYY-MM-DD/{schema/,data/rdf/}` plus `manifest.ttl`, uploaded last as the load sentinel
+- **Layout:** everything loadable under `s3://<bucket>/als/YYYY-MM-DD/data/`, plus `manifest.ttl` at the snapshot root, uploaded last as the load sentinel
 - **Named graph:** `urn:sagebrain:als:YYYY-MM-DD`
 - **Auth:** GitHub OIDC via the `SAGEBRAIN_ROLE_ARN` repository secret (Synapse extraction is anonymous)
 

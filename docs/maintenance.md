@@ -142,17 +142,35 @@ the `SAGEBRAIN_ROLE_ARN` repository secret — no long-lived keys.
 
 ```
 s3://<NeptuneDataBucketName>/als/YYYY-MM-DD/
-    schema/ontology.ttl
+    data/schema/ontology.ttl
     data/rdf/files.ttl
     data/rdf/datasets.ttl
+    data/_provenance.ttl    ← build lineage, inside the load path
     manifest.ttl            ← uploaded LAST
 ```
 
 `manifest.ttl` is the completion sentinel: its `ObjectCreated` event triggers the
-Neptune bulk load of the whole dated folder into `urn:sagebrain:als:YYYY-MM-DD`.
-It also carries provenance (run URL, commit, triple count) that becomes queryable
-lineage in the graph. The upload order matters — if the manifest landed first, the
-loader would fire against an incomplete snapshot.
+Neptune bulk load into `urn:sagebrain:als:YYYY-MM-DD`. Upload order matters — if
+the manifest landed first, the loader would fire against an incomplete snapshot.
+
+### Why everything loadable lives under `data/`
+
+[sagebrain-infra#42](https://github.com/Sage-Bionetworks-IT/sagebrain-infra/pull/42)
+(open at time of writing) narrows the load path from the whole dated folder to the
+`data/` subprefix, because Neptune's bulk loader takes a *literal* S3 prefix — no
+glob, no extension filter — and parses every object under it as Turtle. With
+`failOnError=TRUE`, one stray non-RDF object fails the entire snapshot.
+
+This layout satisfies both loaders: the current one loads the whole folder (all
+Turtle, so it succeeds), and #42 loads `data/` (which holds the ontology and the
+graph). Keep `data/` Turtle-only; anything else belongs in a sibling folder such
+as `other/`.
+
+#42 also moves the sentinel out of the load path, so the manifest's triples would
+no longer reach Neptune. `data/_provenance.ttl` is a byte-identical copy deposited
+*inside* the load path, which keeps build lineage (run URL, commit, triple count)
+queryable. Under the current loader both files are read into the same named graph;
+identical triples, so nothing to de-duplicate.
 
 ### Gates before the deposit
 
@@ -187,6 +205,7 @@ SELECT (COUNT(*) AS ?n) WHERE { GRAPH <urn:sagebrain:als:2026-09-14> { ?s ?p ?o 
 | AWS step fails with `Not authorized to perform sts:AssumeRoleWithWebIdentity` | Role trust policy does not allow this repo/ref | Ask Sage IT to add `repo:amp-als/kg-pipeline:*` to the role's trust condition |
 | `snapshot_date '...' is not YYYY-MM-DD` | Bad manual input | The loader rejects any other shape; use e.g. `2026-09-14` |
 | Files uploaded but nothing loads into Neptune | `manifest.ttl` not at `als/YYYY-MM-DD/manifest.ttl` | The loader parses exactly three key segments; check the prefix |
+| Load fails on a snapshot that uploaded cleanly | A non-Turtle object under `data/` | The bulk loader parses everything under the prefix as Turtle; move it to a sibling folder |
 | `parsed to zero triples — refusing to deposit` | RMLMapper produced an empty graph | Check `logs/*_rml.log` and the source CSVs |
 
 ## Test failures
