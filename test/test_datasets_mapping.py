@@ -118,7 +118,7 @@ def test_known_dataset_type(store, known_dataset):
 def test_biolink_dataset_type_materialized(store):
     """alskp:Dataset rdfs:subClassOf biolink:Dataset is asserted, not inferred.
 
-    GraphDB runs without reasoning, so every alskp:Dataset must also carry an
+    Graph runs without reasoning, so every alskp:Dataset must also carry an
     explicit biolink:Dataset type or BioLink-level queries return nothing.
     """
     missing = list(store.query(
