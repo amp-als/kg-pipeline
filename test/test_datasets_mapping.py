@@ -3,8 +3,12 @@ Unit tests for the ALS KP datasets RML mapping.
 
 Tests run RMLMapper against the real data/csv/datasets.csv and assert
 expected triples via SPARQL queries on the output.
+
+Row counts come from the live Synapse portal and change as data is added or
+retired, so count assertions are derived from the CSV rather than hard-coded.
 """
 
+import csv
 import subprocess
 from pathlib import Path
 
@@ -61,17 +65,26 @@ def val(row, key: str) -> str:
     return row[key].value
 
 
+def csv_subject_count(path: Path) -> int:
+    """Number of distinct `id` values in the CSV — one subject IRI per id."""
+    with path.open(newline="", encoding="utf-8") as fh:
+        ids = {row["id"] for row in csv.DictReader(fh) if row["id"]}
+    assert ids, f"{path.name} has no rows; extraction likely failed."
+    return len(ids)
+
+
 # ---------------------------------------------------------------------------
 # Triple count / class assertions
 # ---------------------------------------------------------------------------
 
 def test_dataset_count(store):
-    """All 25 datasets are mapped as alskp:Dataset instances."""
+    """Every CSV row is mapped to an alskp:Dataset instance."""
+    expected = csv_subject_count(CSV)
     n = sparql_count(
         store,
         f"SELECT (COUNT(?s) AS ?n) WHERE {{ ?s a <{ALSKP}Dataset> }}"
     )
-    assert n == 25, f"Expected 25 datasets, got {n}"
+    assert n == expected, f"Expected {expected} datasets from {CSV.name}, got {n}"
 
 
 def test_known_dataset_type(store):

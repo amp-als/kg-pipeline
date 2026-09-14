@@ -4,10 +4,14 @@ Unit tests for the ALS KP files RML mapping.
 Tests run RMLMapper against the real data/csv/files.csv and assert
 expected triples via SPARQL queries on the output.
 
-Note: files.csv has 8590 rows; RMLMapper takes ~60s on full data.
+Note: files.csv has several thousand rows; RMLMapper takes ~60s on full data.
 The module-scoped fixture runs once per test session.
+
+Row counts come from the live Synapse portal and change as data is added or
+retired, so count assertions are derived from the CSV rather than hard-coded.
 """
 
+import csv
 import subprocess
 from pathlib import Path
 
@@ -64,17 +68,26 @@ def val(row, key: str) -> str:
     return row[key].value
 
 
+def csv_subject_count(path: Path) -> int:
+    """Number of distinct `id` values in the CSV — one subject IRI per id."""
+    with path.open(newline="", encoding="utf-8") as fh:
+        ids = {row["id"] for row in csv.DictReader(fh) if row["id"]}
+    assert ids, f"{path.name} has no rows; extraction likely failed."
+    return len(ids)
+
+
 # ---------------------------------------------------------------------------
 # Triple count / class assertions
 # ---------------------------------------------------------------------------
 
 def test_file_count(store):
-    """All 8590 files are mapped as alskp:PortalFile instances."""
+    """Every CSV row is mapped to an alskp:PortalFile instance."""
+    expected = csv_subject_count(CSV)
     n = sparql_count(
         store,
         f"SELECT (COUNT(?s) AS ?n) WHERE {{ ?s a <{ALSKP}PortalFile> }}"
     )
-    assert n == 8590, f"Expected 8590 files, got {n}"
+    assert n == expected, f"Expected {expected} files from {CSV.name}, got {n}"
 
 
 def test_known_file_type(store):
