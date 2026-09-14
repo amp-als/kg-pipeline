@@ -86,7 +86,7 @@ Namespace: `https://alskp.synapse.org/terms#` (prefix `alskp:`)
 
 Key classes:
 - `alskp:PortalFile` — individual data file in the portal file view
-- `alskp:Dataset rdfs:subClassOf biolink:Dataset` — curated study-level dataset (both types are materialized in the RDF; GraphDB runs without reasoning)
+- `alskp:Dataset rdfs:subClassOf biolink:Dataset` — curated study-level dataset (both types are materialized in the RDF when graph has no built-in reasoning)
 
 See `schema/ontology.ttl` and `docs/architecture.md`.
 
