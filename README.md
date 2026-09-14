@@ -104,6 +104,23 @@ Pre-written queries in `sparql/`:
 
 Run all: `make sparql`
 
+## Sage Brain Deposit
+
+`.github/workflows/deposit-sagebrain.yml` builds the graph and deposits it to the
+Sage Brain S3 bucket, where an [append-only ingestion pipeline](https://github.com/Sage-Bionetworks-IT/sagebrain-infra/pull/39)
+bulk-loads each dated snapshot into its own Neptune named graph.
+
+- **Triggers:** `v*` tag push (release path) or manual run (with optional `snapshot_date` and `dry_run`)
+- **Layout:** `s3://<bucket>/als/YYYY-MM-DD/{schema/,data/rdf/}` plus `manifest.ttl`, uploaded last as the load sentinel
+- **Named graph:** `urn:sagebrain:als:YYYY-MM-DD`
+- **Auth:** GitHub OIDC via the `SAGEBRAIN_ROLE_ARN` repository secret (Synapse extraction is anonymous)
+
+Config check, extraction, RDF generation, FK validation, unit tests, SPARQL
+spot-checks, and a non-empty-graph check all gate the deposit — the Neptune load
+is append-only, so a bad snapshot cannot be rolled back.
+
+See the [maintenance runbook](docs/maintenance.md#depositing-to-sage-brain) for details.
+
 ## Requirements
 
 | Tool | Version | Notes |

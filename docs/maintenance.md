@@ -121,6 +121,74 @@ examples (shared donor links, mutation sets).
 The most immediate Layer 2 candidate for this pipeline is the file↔dataset link via GEO accession —
 see `docs/architecture.md` for the proposed SPARQL CONSTRUCT pattern.
 
+## Depositing to Sage Brain
+
+The `.github/workflows/deposit-sagebrain.yml` workflow builds the graph and deposits
+it to the Sage Brain S3 bucket, where an append-only ingestion pipeline bulk-loads it
+into Neptune. See [sagebrain-infra#39](https://github.com/Sage-Bionetworks-IT/sagebrain-infra/pull/39).
+
+### How it runs
+
+| Trigger | When to use |
+|---|---|
+| `v*` tag push | The normal release path — tag a commit to publish that graph build |
+| Manual (`workflow_dispatch`) | Ad hoc deposits, backfilling a specific `snapshot_date`, or a `dry_run` build with no deposit |
+
+The workflow extracts from Synapse anonymously (portal Layer 1 metadata is public),
+so no Synapse credentials are needed. It authenticates to AWS via GitHub OIDC using
+the `SAGEBRAIN_ROLE_ARN` repository secret — no long-lived keys.
+
+### What lands in S3
+
+```
+s3://<NeptuneDataBucketName>/als/YYYY-MM-DD/
+    schema/ontology.ttl
+    data/rdf/files.ttl
+    data/rdf/datasets.ttl
+    manifest.ttl            ← uploaded LAST
+```
+
+`manifest.ttl` is the completion sentinel: its `ObjectCreated` event triggers the
+Neptune bulk load of the whole dated folder into `urn:sagebrain:als:YYYY-MM-DD`.
+It also carries provenance (run URL, commit, triple count) that becomes queryable
+lineage in the graph. The upload order matters — if the manifest landed first, the
+loader would fire against an incomplete snapshot.
+
+### Gates before the deposit
+
+The load runs with `failOnError=TRUE` and never deletes, so a bad snapshot is
+permanent. Every step below must pass before anything is uploaded:
+
+`make check-config` → `make extract` → `make rdf` → `validate_fks.py --strict`
+→ `make test` → `make sparql` → non-zero triple count in every `.ttl`
+
+### Re-running on the same date
+
+`aws s3 sync --delete` fully replaces the day's files (a plain `cp` would leave
+renamed or dropped files behind, and the loader ingests everything under the
+prefix). Re-uploading `manifest.ttl` gives it a new etag, which the Sage Brain
+loader treats as a genuine re-publish and reloads. A duplicate event with an
+unchanged etag is skipped.
+
+### Querying a snapshot
+
+Neptune's SPARQL default graph is the union of all named graphs, so an unscoped
+query returns every snapshot merged. Scope to one build:
+
+```sparql
+SELECT (COUNT(*) AS ?n) WHERE { GRAPH <urn:sagebrain:als:2026-09-14> { ?s ?p ?o } }
+```
+
+### Troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `secret SAGEBRAIN_ROLE_ARN is not set` | Repo secret missing | Add the IAM role ARN from the sagebrain account as a repository secret |
+| AWS step fails with `Not authorized to perform sts:AssumeRoleWithWebIdentity` | Role trust policy does not allow this repo/ref | Ask Sage IT to add `repo:amp-als/kg-pipeline:*` to the role's trust condition |
+| `snapshot_date '...' is not YYYY-MM-DD` | Bad manual input | The loader rejects any other shape; use e.g. `2026-09-14` |
+| Files uploaded but nothing loads into Neptune | `manifest.ttl` not at `als/YYYY-MM-DD/manifest.ttl` | The loader parses exactly three key segments; check the prefix |
+| `parsed to zero triples — refusing to deposit` | RMLMapper produced an empty graph | Check `logs/*_rml.log` and the source CSVs |
+
 ## Test failures
 
 | Symptom | Likely cause | Fix |

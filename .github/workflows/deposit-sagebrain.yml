@@ -1,0 +1,228 @@
+# Build the ALS KP knowledge graph and deposit it to the Sage Brain S3 bucket.
+#
+# The Sage Brain append-only ingestion pipeline watches the bucket for
+# `{portal}/YYYY-MM-DD/manifest.ttl` object-created events and bulk-loads the
+# whole dated folder into its own Neptune named graph (`urn:sagebrain:als:<date>`).
+# See https://github.com/Sage-Bionetworks-IT/sagebrain-infra/pull/39.
+#
+#   s3://<bucket>/als/YYYY-MM-DD/
+#     schema/ontology.ttl      <- ontology
+#     data/rdf/*.ttl           <- generated graph data
+#     manifest.ttl             <- written LAST; its upload is the load trigger
+#
+# Requires repository secret SAGEBRAIN_ROLE_ARN: the IAM role in the sagebrain
+# account that this repo assumes via GitHub OIDC (no long-lived keys).
+# Synapse extraction is anonymous — portal Layer 1 metadata is public.
+
+name: Build and deposit to Sage Brain
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build and validate only — skip the S3 deposit"
+        type: boolean
+        default: false
+      snapshot_date:
+        description: "Snapshot date YYYY-MM-DD (default: today, UTC)"
+        type: string
+        required: false
+
+env:
+  AWS_REGION: us-east-1
+  # Stable CDK-generated name; see the `NeptuneDataBucketName` output of the
+  # `app-prod-neptune` CloudFormation stack.
+  NEPTUNE_BUCKET: app-prod-neptune-neptunedatabucketb8719d9a-jfo3bsfisgfn
+  PORTAL: als
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+# Two concurrent deposits on the same date would race on the same S3 prefix.
+concurrency:
+  group: sagebrain-deposit
+  cancel-in-progress: false
+
+jobs:
+  build-and-deposit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Cache RMLMapper
+        id: rmlmapper-cache
+        uses: actions/cache@v5
+        with:
+          path: tools/rmlmapper-*.jar
+          # Makefile pins RMLMAPPER_VERSION, so a version bump busts the cache.
+          key: rmlmapper-${{ hashFiles('Makefile') }}
+
+      - name: Download RMLMapper
+        if: steps.rmlmapper-cache.outputs.cache-hit != 'true'
+        run: make download-jar
+
+      # ---------------------------------------------------------------- build
+      - name: Check config consistency
+        run: make check-config
+
+      - name: Extract portal tables from Synapse
+        run: make extract
+
+      - name: Generate RDF
+        run: make rdf
+
+      # ------------------------------------------------------------- validate
+      # Every check below gates the deposit: the append-only pipeline loads with
+      # failOnError=TRUE and never deletes, so a bad snapshot is permanent.
+      - name: Validate FK constraints
+        run: python3 scripts/validate_fks.py --strict
+
+      - name: Run unit tests
+        run: make test
+
+      - name: Run SPARQL use-case checks
+        run: make sparql
+
+      - name: Summarize graph
+        id: graph
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          from pathlib import Path
+          import pyoxigraph
+
+          graph = sorted(Path("data/rdf").glob("*.ttl"))
+          if not graph:
+              raise SystemExit("data/rdf/ holds no .ttl — refusing to deposit an ontology-only snapshot")
+
+          total = 0
+          rows = []
+          for path in graph + [Path("schema/ontology.ttl")]:
+              store = pyoxigraph.Store()
+              store.load(path.open("rb"), format=pyoxigraph.RdfFormat.TURTLE)
+              if not len(store):
+                  raise SystemExit(f"{path} parsed to zero triples — refusing to deposit")
+              total += len(store)
+              rows.append(f"| `{path}` | {len(store):,} |")
+
+          print(f"triples={total}")
+          summary = Path("graph-summary.md")
+          summary.write_text(
+              "## Graph contents\n\n| File | Triples |\n|---|---:|\n"
+              + "\n".join(rows)
+              + f"\n| **Total** | **{total:,}** |\n"
+          )
+          PY
+          cat graph-summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: kg-data
+          path: |
+            data/raw/
+            data/csv/
+            data/rdf/
+            schema/
+
+      # -------------------------------------------------------------- deposit
+      - name: Resolve deposit target
+        if: github.event.inputs.dry_run != 'true'
+        id: snapshot
+        env:
+          ROLE_ARN: ${{ secrets.SAGEBRAIN_ROLE_ARN }}
+          # Via env, not inline `${{ }}`, so a crafted input can't inject shell.
+          INPUT_DATE: ${{ github.event.inputs.snapshot_date }}
+        run: |
+          if [ -z "$ROLE_ARN" ]; then
+            echo "::error::secret SAGEBRAIN_ROLE_ARN is not set — cannot authenticate to the Sage Brain account"
+            exit 1
+          fi
+          DATE="${INPUT_DATE:-$(date -u +%Y-%m-%d)}"
+          # The Sage Brain loader rejects any key that is not {portal}/YYYY-MM-DD/
+          # manifest.ttl — fail here rather than after a 20-minute build.
+          if ! [[ "$DATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+            echo "::error::snapshot_date '$DATE' is not YYYY-MM-DD"
+            exit 1
+          fi
+          echo "date=$DATE" >> "$GITHUB_OUTPUT"
+          echo "prefix=s3://${NEPTUNE_BUCKET}/${PORTAL}/${DATE}" >> "$GITHUB_OUTPUT"
+
+      - name: Configure AWS credentials
+        if: github.event.inputs.dry_run != 'true'
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ secrets.SAGEBRAIN_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Generate manifest
+        if: github.event.inputs.dry_run != 'true'
+        env:
+          SNAPSHOT_DATE: ${{ steps.snapshot.outputs.date }}
+          PREFIX: ${{ steps.snapshot.outputs.prefix }}
+          TRIPLES: ${{ steps.graph.outputs.triples }}
+        run: |
+          : "${TRIPLES:?graph summary produced no triple count}"
+          TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          cat > manifest.ttl <<EOF
+          @prefix alskp: <https://alskp.synapse.org/terms#> .
+          @prefix prov:  <http://www.w3.org/ns/prov#> .
+          @prefix void:  <http://rdfs.org/ns/void#> .
+          @prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+
+          alskp:kgBuild_${{ github.run_id }}
+              a prov:Activity, void:Dataset ;
+              prov:generatedAtTime "$TIMESTAMP"^^xsd:dateTime ;
+              prov:wasAssociatedWith <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}> ;
+              prov:used <${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}> ;
+              alskp:portal "${PORTAL}" ;
+              alskp:snapshotDate "${SNAPSHOT_DATE}"^^xsd:date ;
+              alskp:gitRef "${{ github.ref_name }}" ;
+              alskp:gitCommit "${{ github.sha }}" ;
+              alskp:buildRunId "${{ github.run_id }}" ;
+              alskp:buildTriggerEvent "${{ github.event_name }}" ;
+              void:triples ${TRIPLES} ;
+              void:dataDump <${PREFIX}/> .
+          EOF
+          cat manifest.ttl
+
+      - name: Deposit to S3
+        if: github.event.inputs.dry_run != 'true'
+        env:
+          PREFIX: ${{ steps.snapshot.outputs.prefix }}
+        # `sync --delete` rather than `cp --recursive`: if two builds land on the
+        # same date the second must fully replace the first, including files
+        # renamed or dropped since — `cp` would leave stale .ttl behind and the
+        # bulk loader ingests every object under the prefix.
+        #
+        # manifest.ttl goes LAST and on its own: its ObjectCreated event is the
+        # completion sentinel that triggers the Neptune load. Re-uploading it for
+        # an existing date yields a new etag, which the loader treats as a genuine
+        # re-publish and reloads.
+        run: |
+          aws s3 sync schema/   "$PREFIX/schema/"   --delete --exclude "*" --include "*.ttl"
+          aws s3 sync data/rdf/ "$PREFIX/data/rdf/" --delete --exclude "*" --include "*.ttl"
+          aws s3 cp manifest.ttl "$PREFIX/manifest.ttl"
+          {
+            echo ""
+            echo "## Deposited"
+            echo ""
+            echo "\`$PREFIX/\` → named graph \`urn:sagebrain:${PORTAL}:${{ steps.snapshot.outputs.date }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
