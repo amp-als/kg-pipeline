@@ -106,18 +106,26 @@ Run all: `make sparql`
 
 ## Sage Brain Deposit
 
-`.github/workflows/deposit-sagebrain.yml` builds the graph and deposits it to the
-Sage Brain S3 bucket, where an [append-only ingestion pipeline](https://github.com/Sage-Bionetworks-IT/sagebrain-infra/pull/39)
+Building the graph and publishing it are two workflows, so a build can be made
+and inspected without anything reaching Sage Brain.
+
+| Workflow | Does | Triggers |
+|---|---|---|
+| `.github/workflows/build-graph.yml` | Builds, validates, uploads a `kg-snapshot` artifact. Touches no AWS. | `v*` tag push, or manual (optionally with `deposit: true`) |
+| `.github/workflows/deposit-sagebrain.yml` | Uploads the artifact of a chosen build run to S3. Builds nothing. | Manual with a `build_run_id`, or called by a build dispatched with `deposit: true` |
+
+The Sage Brain [append-only ingestion pipeline](https://github.com/Sage-Bionetworks-IT/sagebrain-infra/pull/39)
 bulk-loads each dated snapshot into its own Neptune named graph.
 
-- **Triggers:** `v*` tag push (release path) or manual run (with optional `snapshot_date` and `dry_run`)
 - **Layout:** everything loadable under `s3://<bucket>/als/YYYY-MM-DD/data/`, plus `manifest.ttl` at the snapshot root, uploaded last as the load sentinel
 - **Named graph:** `urn:sagebrain:als:YYYY-MM-DD`
 - **Auth:** GitHub OIDC via the `SAGEBRAIN_ROLE_ARN` repository secret (Synapse extraction is anonymous)
+- **Confirmation:** the deposit job runs in the `sagebrain-prod` environment — add required reviewers there to hold every publish for approval
 
 Config check, extraction, RDF generation, FK validation, unit tests, SPARQL
-spot-checks, and a non-empty-graph check all gate the deposit — the Neptune load
-is append-only, so a bad snapshot cannot be rolled back.
+spot-checks, and a non-empty-graph check all gate the artifact; the deposit
+re-verifies it against the build's recorded triple count before uploading. The
+Neptune load is append-only, so a bad snapshot cannot be rolled back.
 
 See the [maintenance runbook](docs/maintenance.md#depositing-to-sage-brain) for details.
 

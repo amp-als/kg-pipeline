@@ -1,4 +1,17 @@
-# Build the ALS KP knowledge graph and deposit it to the Sage Brain S3 bucket.
+# Deposit a previously built graph snapshot to the Sage Brain S3 bucket.
+#
+# This workflow builds nothing. It downloads the `kg-snapshot` artifact from a
+# run of `build-graph.yml` and uploads exactly those bytes, so what gets
+# published is what was already built, inspected and validated.
+#
+# Two entry points, both opt-in:
+#   * manual dispatch with an explicit `build_run_id` — deposit a build that
+#     already exists, after looking at it;
+#   * called by `build-graph.yml` when that run was dispatched with
+#     `deposit: true` — build and publish in one go.
+#
+# Either way the job runs in the `sagebrain-prod` environment: add required
+# reviewers there to hold every deposit for human confirmation.
 #
 # The Sage Brain append-only ingestion pipeline watches the bucket for
 # `{portal}/YYYY-MM-DD/manifest.ttl` object-created events and bulk-loads the
@@ -19,24 +32,44 @@
 #
 # Requires repository secret SAGEBRAIN_ROLE_ARN: the IAM role in the sagebrain
 # account that this repo assumes via GitHub OIDC (no long-lived keys).
-# Synapse extraction is anonymous — portal Layer 1 metadata is public.
 
-name: Build and deposit to Sage Brain
+name: Deposit to Sage Brain
 
 on:
-  push:
-    tags:
-      - "v*"
   workflow_dispatch:
     inputs:
-      dry_run:
-        description: "Build and validate only — skip the S3 deposit"
-        type: boolean
-        default: false
+      build_run_id:
+        description: "Run ID of the 'Build graph snapshot' run to deposit"
+        type: string
+        required: true
       snapshot_date:
         description: "Snapshot date YYYY-MM-DD (default: today, UTC)"
         type: string
         required: false
+      allow_overwrite:
+        description: "Allow replacing an existing snapshot for that date"
+        type: boolean
+        default: false
+      dry_run:
+        description: "Fetch, verify and render the manifest — skip the S3 upload"
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      # Omitted by build-graph.yml: a called workflow shares the caller's run ID,
+      # so the snapshot it just uploaded is this run's own artifact.
+      build_run_id:
+        type: string
+        required: false
+      snapshot_date:
+        type: string
+        required: false
+      allow_overwrite:
+        type: boolean
+        default: false
+      dry_run:
+        type: boolean
+        default: false
 
 env:
   AWS_REGION: us-east-1
@@ -44,134 +77,56 @@ env:
   # `app-prod-neptune` CloudFormation stack.
   NEPTUNE_BUCKET: app-prod-neptune-neptunedatabucketb8719d9a-jfo3bsfisgfn
   PORTAL: als
+  BUILD_WORKFLOW: build-graph.yml
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
-# Two concurrent deposits on the same date would race on the same S3 prefix.
-concurrency:
-  group: sagebrain-deposit
-  cancel-in-progress: false
-
 jobs:
-  build-and-deposit:
+  deposit:
     runs-on: ubuntu-latest
+    # Two concurrent deposits on the same date would race on the same S3 prefix.
+    # Declared on the job, not the workflow, so it also holds when this workflow
+    # is called by build-graph.yml.
+    concurrency:
+      group: sagebrain-deposit
+      cancel-in-progress: false
+    # Attach required reviewers to this environment to hold every deposit for
+    # human confirmation; the run pauses here before anything is fetched.
+    environment: sagebrain-prod
     permissions:
       contents: read
-      id-token: write
+      actions: read      # read the build run and download its artifact
+      id-token: write    # OIDC into the sagebrain account
 
     steps:
-      - uses: actions/checkout@v6
-
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-          cache: pip
-
-      - uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: "21"
-
-      - name: Install Python dependencies
-        run: pip install -r requirements.txt
-
-      - name: Cache RMLMapper
-        id: rmlmapper-cache
-        uses: actions/cache@v5
-        with:
-          path: tools/rmlmapper-*.jar
-          # Makefile pins RMLMAPPER_VERSION, so a version bump busts the cache.
-          key: rmlmapper-${{ hashFiles('Makefile') }}
-
-      - name: Download RMLMapper
-        if: steps.rmlmapper-cache.outputs.cache-hit != 'true'
-        run: make download-jar
-
-      # ---------------------------------------------------------------- build
-      - name: Check config consistency
-        run: make check-config
-
-      - name: Extract portal tables from Synapse
-        run: make extract
-
-      - name: Generate RDF
-        run: make rdf
-
-      # ------------------------------------------------------------- validate
-      # Every check below gates the deposit: the append-only pipeline loads with
-      # failOnError=TRUE and never deletes, so a bad snapshot is permanent.
-      - name: Validate FK constraints
-        run: python3 scripts/validate_fks.py --strict
-
-      - name: Run unit tests
-        run: make test
-
-      - name: Run SPARQL use-case checks
-        run: make sparql
-
-      - name: Summarize graph
-        id: graph
-        run: |
-          python3 - <<'PY' >> "$GITHUB_OUTPUT"
-          from pathlib import Path
-          import pyoxigraph
-
-          graph = sorted(Path("data/rdf").glob("*.ttl"))
-          if not graph:
-              raise SystemExit("data/rdf/ holds no .ttl — refusing to deposit an ontology-only snapshot")
-
-          total = 0
-          rows = []
-          for path in graph + [Path("schema/ontology.ttl")]:
-              store = pyoxigraph.Store()
-              store.load(path.open("rb"), format=pyoxigraph.RdfFormat.TURTLE)
-              if not len(store):
-                  raise SystemExit(f"{path} parsed to zero triples — refusing to deposit")
-              total += len(store)
-              rows.append(f"| `{path}` | {len(store):,} |")
-
-          print(f"triples={total}")
-          summary = Path("graph-summary.md")
-          summary.write_text(
-              "## Graph contents\n\n| File | Triples |\n|---|---:|\n"
-              + "\n".join(rows)
-              + f"\n| **Total** | **{total:,}** |\n"
-          )
-          PY
-          cat graph-summary.md >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v7
-        with:
-          name: kg-data
-          path: |
-            data/raw/
-            data/csv/
-            data/rdf/
-            schema/
-
-      # -------------------------------------------------------------- deposit
-      - name: Resolve deposit target
-        if: github.event.inputs.dry_run != 'true'
-        id: snapshot
+      - name: Check preconditions
         env:
           ROLE_ARN: ${{ secrets.SAGEBRAIN_ROLE_ARN }}
-          # Via env, not inline `${{ }}`, so a crafted input can't inject shell.
-          INPUT_DATE: ${{ github.event.inputs.snapshot_date }}
+          DRY_RUN: ${{ inputs.dry_run }}
         run: |
-          if [ -z "$ROLE_ARN" ]; then
+          if [ "$DRY_RUN" != "true" ] && [ -z "$ROLE_ARN" ]; then
             echo "::error::secret SAGEBRAIN_ROLE_ARN is not set — cannot authenticate to the Sage Brain account"
             exit 1
           fi
           # The OIDC role's trust policy only accepts refs/tags/*, refs/heads/main
           # and refs/heads/develop (organizations-infra, 650-identity-providers).
           # Catch it here rather than letting AssumeRole fail with an opaque error.
-          if [ "$GITHUB_REF_TYPE" != "tag" ] && [ "$GITHUB_REF_NAME" != "main" ] && [ "$GITHUB_REF_NAME" != "develop" ]; then
-            echo "::error::deposits run from a tag, main or develop — '$GITHUB_REF_NAME' is not trusted by the OIDC role. Re-run with dry_run to build without depositing."
+          if [ "$DRY_RUN" != "true" ] \
+             && [ "$GITHUB_REF_TYPE" != "tag" ] \
+             && [ "$GITHUB_REF_NAME" != "main" ] \
+             && [ "$GITHUB_REF_NAME" != "develop" ]; then
+            echo "::error::deposits run from a tag, main or develop — '$GITHUB_REF_NAME' is not trusted by the OIDC role. Re-run with dry_run to rehearse."
             exit 1
           fi
+
+      - name: Resolve snapshot date
+        id: snapshot
+        env:
+          # Via env, not inline `${{ }}`, so a crafted input can't inject shell.
+          INPUT_DATE: ${{ inputs.snapshot_date }}
+        run: |
           DATE="${INPUT_DATE:-$(date -u +%Y-%m-%d)}"
           # The Sage Brain loader rejects any key that is not {portal}/YYYY-MM-DD/
-          # manifest.ttl — fail here rather than after a 20-minute build.
+          # manifest.ttl — fail here rather than after the download.
           if ! [[ "$DATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
             echo "::error::snapshot_date '$DATE' is not YYYY-MM-DD"
             exit 1
@@ -179,46 +134,163 @@ jobs:
           echo "date=$DATE" >> "$GITHUB_OUTPUT"
           echo "prefix=s3://${NEPTUNE_BUCKET}/${PORTAL}/${DATE}" >> "$GITHUB_OUTPUT"
 
+      # The build run is the unit of publication: an explicitly named run must be
+      # a successful run of build-graph.yml in this repo, so a deposit can never
+      # carry files from an unrelated or failed workflow. When build-graph.yml
+      # calls this workflow the run is our own — its build job is a `needs:`
+      # dependency, so it has already succeeded, and the API would still report
+      # the run as in progress.
+      - name: Resolve build run
+        id: build
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_RUN_ID: ${{ inputs.build_run_id }}
+          THIS_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          BUILD_RUN_ID="${INPUT_RUN_ID:-$GITHUB_RUN_ID}"
+          if ! [[ "$BUILD_RUN_ID" =~ ^[0-9]+$ ]]; then
+            echo "::error::build_run_id '$BUILD_RUN_ID' is not a run ID"
+            exit 1
+          fi
+          if [ "$BUILD_RUN_ID" = "$GITHUB_RUN_ID" ]; then
+            {
+              echo "id=$GITHUB_RUN_ID"
+              echo "url=$THIS_RUN_URL"
+              echo "sha=$GITHUB_SHA"
+              echo "ref=$GITHUB_REF_NAME"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BUILD_RUN_ID" > run.json
+          NAME=$(jq -r '.path | split("/") | last' run.json)
+          STATUS=$(jq -r '.conclusion' run.json)
+          if [ "$NAME" != "$BUILD_WORKFLOW" ]; then
+            echo "::error::run $BUILD_RUN_ID is '$NAME', not $BUILD_WORKFLOW"
+            exit 1
+          fi
+          if [ "$STATUS" != "success" ]; then
+            echo "::error::build run $BUILD_RUN_ID concluded '$STATUS' — only successful builds may be deposited"
+            exit 1
+          fi
+          {
+            echo "id=$BUILD_RUN_ID"
+            echo "url=$(jq -r '.html_url' run.json)"
+            echo "sha=$(jq -r '.head_sha' run.json)"
+            echo "ref=$(jq -r '.head_branch // .head_sha' run.json)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Download snapshot
+        uses: actions/download-artifact@v7
+        with:
+          name: kg-snapshot
+          path: snapshot
+          run-id: ${{ steps.build.outputs.id }}
+          github-token: ${{ github.token }}
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Verify snapshot
+        id: verify
+        run: |
+          pip install --quiet 'pyoxigraph>=0.5.0'
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          from pathlib import Path
+          import pyoxigraph
+
+          meta = json.loads(Path("snapshot/build-metadata.json").read_text())
+          root = Path("snapshot/data")
+          paths = sorted(p for p in root.rglob("*") if p.is_file())
+          stray = [str(p) for p in paths if p.suffix != ".ttl"]
+          if stray:
+              raise SystemExit(f"non-Turtle files under data/: {stray} — the bulk loader would fail the whole snapshot")
+          if not list((root / "rdf").glob("*.ttl")):
+              raise SystemExit("data/rdf/ holds no .ttl — refusing to deposit an ontology-only snapshot")
+
+          total, rows = 0, []
+          for path in paths:
+              store = pyoxigraph.Store()
+              store.load(path.open("rb"), format=pyoxigraph.RdfFormat.TURTLE)
+              if not len(store):
+                  raise SystemExit(f"{path} parsed to zero triples — refusing to deposit")
+              total += len(store)
+              rows.append(f"| `{path.relative_to(root.parent)}` | {len(store):,} |")
+
+          # A mismatch means the artifact is not what the build validated.
+          if total != meta["triples"]:
+              raise SystemExit(f"artifact holds {total} triples, build recorded {meta['triples']}")
+
+          print(f"triples={total}")
+          Path("graph-summary.md").write_text(
+              "## Snapshot contents\n\n| File | Triples |\n|---|---:|\n"
+              + "\n".join(rows)
+              + f"\n| **Total** | **{total:,}** |\n"
+          )
+          PY
+          cat graph-summary.md >> "$GITHUB_STEP_SUMMARY"
+
       - name: Configure AWS credentials
-        if: github.event.inputs.dry_run != 'true'
+        if: inputs.dry_run != true
         uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: ${{ secrets.SAGEBRAIN_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
+      # The pipeline is append-only, so re-publishing a date reloads it into the
+      # same named graph. Never silently: overwriting is opt-in per run.
+      - name: Check the date is free
+        if: inputs.dry_run != true && inputs.allow_overwrite != true
+        env:
+          PREFIX: ${{ steps.snapshot.outputs.prefix }}
+        run: |
+          if [ -n "$(aws s3 ls "$PREFIX/" || true)" ]; then
+            echo "::error::$PREFIX/ already holds a snapshot. Re-run with allow_overwrite to replace it, or pick another snapshot_date."
+            exit 1
+          fi
+
       - name: Generate manifest
-        if: github.event.inputs.dry_run != 'true'
         env:
           SNAPSHOT_DATE: ${{ steps.snapshot.outputs.date }}
           PREFIX: ${{ steps.snapshot.outputs.prefix }}
-          TRIPLES: ${{ steps.graph.outputs.triples }}
+          TRIPLES: ${{ steps.verify.outputs.triples }}
+          BUILD_RUN_ID: ${{ steps.build.outputs.id }}
+          BUILD_RUN_URL: ${{ steps.build.outputs.url }}
+          BUILD_SHA: ${{ steps.build.outputs.sha }}
+          BUILD_REF: ${{ steps.build.outputs.ref }}
+        # Provenance is the build's, not this run's: the graph records which
+        # commit and build produced it, plus the deposit run that published it.
         run: |
-          : "${TRIPLES:?graph summary produced no triple count}"
-          TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          : "${TRIPLES:?verification produced no triple count}"
+          DEPOSITED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          BUILT_AT=$(jq -r '.built_at' snapshot/build-metadata.json)
           cat > manifest.ttl <<EOF
           @prefix alskp: <https://alskp.synapse.org/terms#> .
           @prefix prov:  <http://www.w3.org/ns/prov#> .
           @prefix void:  <http://rdfs.org/ns/void#> .
           @prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
 
-          alskp:kgBuild_${{ github.run_id }}
+          alskp:kgBuild_${BUILD_RUN_ID}
               a prov:Activity, void:Dataset ;
-              prov:generatedAtTime "$TIMESTAMP"^^xsd:dateTime ;
-              prov:wasAssociatedWith <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}> ;
-              prov:used <${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}> ;
+              prov:generatedAtTime "${BUILT_AT}"^^xsd:dateTime ;
+              prov:wasAssociatedWith <${BUILD_RUN_URL}> ;
+              prov:used <${{ github.server_url }}/${{ github.repository }}/commit/${BUILD_SHA}> ;
               alskp:portal "${PORTAL}" ;
               alskp:snapshotDate "${SNAPSHOT_DATE}"^^xsd:date ;
-              alskp:gitRef "${{ github.ref_name }}" ;
-              alskp:gitCommit "${{ github.sha }}" ;
-              alskp:buildRunId "${{ github.run_id }}" ;
-              alskp:buildTriggerEvent "${{ github.event_name }}" ;
+              alskp:gitRef "${BUILD_REF}" ;
+              alskp:gitCommit "${BUILD_SHA}" ;
+              alskp:buildRunId "${BUILD_RUN_ID}" ;
+              alskp:depositRunId "${{ github.run_id }}" ;
+              alskp:depositedAtTime "${DEPOSITED_AT}"^^xsd:dateTime ;
+              alskp:depositedBy <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}> ;
               void:triples ${TRIPLES} ;
               void:dataDump <${PREFIX}/data/> .
           EOF
           cat manifest.ttl
 
-      - name: Deposit to S3
-        if: github.event.inputs.dry_run != 'true'
+      - name: Upload the snapshot
+        if: inputs.dry_run != true
         env:
           PREFIX: ${{ steps.snapshot.outputs.prefix }}
         # `sync --delete` rather than `cp --recursive`: if two builds land on the
@@ -226,24 +298,81 @@ jobs:
         # renamed or dropped since — `cp` would leave stale .ttl behind and the
         # bulk loader ingests every object under the prefix.
         #
+        # The sync is deliberately unfiltered. The source is already Turtle-only
+        # — the verify step above refuses the artifact otherwise — and adding
+        # `--exclude "*" --include "*.ttl"` would apply to the *destination*
+        # listing too, so `--delete` would no longer remove a stray non-Turtle
+        # object left under the prefix. That object is precisely what fails the
+        # load, so it must be swept, not skipped.
+        #
         # _provenance.ttl is the manifest's triples deposited *inside* the load
         # path. sagebrain-infra#42 moves the sentinel out of the load path, so the
         # manifest alone would no longer reach the graph; this copy keeps build
         # lineage queryable. Under either loader the two files carry identical
         # triples in one named graph, so there is nothing to de-duplicate.
-        #
+        run: |
+          aws s3 sync snapshot/data/ "$PREFIX/data/" --delete
+          aws s3 cp manifest.ttl "$PREFIX/data/_provenance.ttl"
+
+      # Last check before the point of no return. The load path is whatever sits
+      # under the prefix at sentinel time, not what this run uploaded: a stray
+      # object from an aborted run, a hand-copied file, another writer. With
+      # failOnError=TRUE one of them fails the whole snapshot, permanently.
+      - name: Check the load path is Turtle-only
+        if: inputs.dry_run != true
+        env:
+          PREFIX: ${{ steps.snapshot.outputs.prefix }}
+        run: |
+          aws s3 ls --recursive "$PREFIX/data/" | awk '{print $4}' > keys.txt
+          if ! [ -s keys.txt ]; then
+            echo "::error::$PREFIX/data/ is empty after the upload"
+            exit 1
+          fi
+          if STRAY=$(grep -v '\.ttl$' keys.txt); then
+            echo "::error::non-Turtle objects under $PREFIX/data/ — the bulk loader would fail the whole snapshot:"
+            echo "$STRAY"
+            exit 1
+          fi
+          # Every local file, plus _provenance.ttl.
+          EXPECTED=$(( $(find snapshot/data -type f | wc -l) + 1 ))
+          FOUND=$(wc -l < keys.txt)
+          if [ "$FOUND" -ne "$EXPECTED" ]; then
+            echo "::error::$PREFIX/data/ holds $FOUND objects, expected $EXPECTED"
+            exit 1
+          fi
+          echo "$FOUND Turtle objects under $PREFIX/data/"
+
+      - name: Trigger the load
+        if: inputs.dry_run != true
+        env:
+          PREFIX: ${{ steps.snapshot.outputs.prefix }}
         # manifest.ttl goes LAST and on its own: its ObjectCreated event is the
         # completion sentinel that triggers the Neptune load. Re-uploading it for
         # an existing date yields a new etag, which the loader treats as a genuine
         # re-publish and reloads.
+        run: aws s3 cp manifest.ttl "$PREFIX/manifest.ttl"
+
+      - name: Summarize
+        env:
+          PREFIX: ${{ steps.snapshot.outputs.prefix }}
+          DATE: ${{ steps.snapshot.outputs.date }}
+          BUILD_RUN_ID: ${{ steps.build.outputs.id }}
+          BUILD_RUN_URL: ${{ steps.build.outputs.url }}
+          BUILD_SHA: ${{ steps.build.outputs.sha }}
+          DRY_RUN: ${{ inputs.dry_run }}
         run: |
-          aws s3 sync schema/   "$PREFIX/data/schema/" --delete --exclude "*" --include "*.ttl"
-          aws s3 sync data/rdf/ "$PREFIX/data/rdf/"    --delete --exclude "*" --include "*.ttl"
-          aws s3 cp manifest.ttl "$PREFIX/data/_provenance.ttl"
-          aws s3 cp manifest.ttl "$PREFIX/manifest.ttl"
           {
             echo ""
-            echo "## Deposited"
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "## Dry run — nothing uploaded"
+            else
+              echo "## Deposited"
+            fi
             echo ""
-            echo "\`$PREFIX/\` → named graph \`urn:sagebrain:${PORTAL}:${{ steps.snapshot.outputs.date }}\`"
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Build | [$BUILD_RUN_ID]($BUILD_RUN_URL) |"
+            echo "| Commit | \`$BUILD_SHA\` |"
+            echo "| Target | \`$PREFIX/\` |"
+            echo "| Named graph | \`urn:sagebrain:${PORTAL}:${DATE}\` |"
           } >> "$GITHUB_STEP_SUMMARY"
