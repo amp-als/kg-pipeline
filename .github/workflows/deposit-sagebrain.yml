@@ -162,6 +162,13 @@ jobs:
             echo "::error::secret SAGEBRAIN_ROLE_ARN is not set — cannot authenticate to the Sage Brain account"
             exit 1
           fi
+          # The OIDC role's trust policy only accepts refs/tags/*, refs/heads/main
+          # and refs/heads/develop (organizations-infra, 650-identity-providers).
+          # Catch it here rather than letting AssumeRole fail with an opaque error.
+          if [ "$GITHUB_REF_TYPE" != "tag" ] && [ "$GITHUB_REF_NAME" != "main" ] && [ "$GITHUB_REF_NAME" != "develop" ]; then
+            echo "::error::deposits run from a tag, main or develop — '$GITHUB_REF_NAME' is not trusted by the OIDC role. Re-run with dry_run to build without depositing."
+            exit 1
+          fi
           DATE="${INPUT_DATE:-$(date -u +%Y-%m-%d)}"
           # The Sage Brain loader rejects any key that is not {portal}/YYYY-MM-DD/
           # manifest.ttl — fail here rather than after a 20-minute build.

@@ -138,6 +138,31 @@ The workflow extracts from Synapse anonymously (portal Layer 1 metadata is publi
 so no Synapse credentials are needed. It authenticates to AWS via GitHub OIDC using
 the `SAGEBRAIN_ROLE_ARN` repository secret — no long-lived keys.
 
+### One-time setup: `SAGEBRAIN_ROLE_ARN`
+
+The IAM role is already provisioned for this repo by Sage IT — see the
+`GithubOidcSageBionetworksItSageBrainInfraAmpAls` task in
+[organizations-infra `org-formation/650-identity-providers/_tasks.yaml`](https://github.com/Sage-Bionetworks-IT/organizations-infra/blob/main/org-formation/650-identity-providers/_tasks.yaml).
+Only the repository secret is missing:
+
+```bash
+gh secret set SAGEBRAIN_ROLE_ARN --repo amp-als/kg-pipeline \
+  --body "arn:aws:iam::620117233256:role/sagebase-github-oidc-sage-bionetworks-it-sagebrain-infra-als"
+```
+
+`620117233256` is `org-sagebase-sagebrain-prod`, which holds the `app-prod-neptune-*`
+bucket. The same role name exists in the dev account (`org-sagebase-sagebrain-dev`)
+if a dev target is ever wanted.
+
+The role grants S3 only — `ListBucket` plus `PutObject`/`GetObject`/`DeleteObject`
+on `app-*-neptune-neptunedatabucket*`. That covers `sync --delete`; it grants no
+Neptune access, since loading is the pipeline's job, not ours.
+
+**Trusted refs.** The trust policy accepts `refs/tags/*`, `refs/heads/main` and
+`refs/heads/develop` only. Tag pushes and dispatches from `main` work; a dispatch
+from a feature branch is rejected by the workflow up front (use `dry_run` to build
+without depositing).
+
 ### What lands in S3
 
 ```
@@ -202,7 +227,8 @@ SELECT (COUNT(*) AS ?n) WHERE { GRAPH <urn:sagebrain:als:2026-09-14> { ?s ?p ?o 
 | Symptom | Cause | Fix |
 |---|---|---|
 | `secret SAGEBRAIN_ROLE_ARN is not set` | Repo secret missing | Add the IAM role ARN from the sagebrain account as a repository secret |
-| AWS step fails with `Not authorized to perform sts:AssumeRoleWithWebIdentity` | Role trust policy does not allow this repo/ref | Ask Sage IT to add `repo:amp-als/kg-pipeline:*` to the role's trust condition |
+| `'<branch>' is not trusted by the OIDC role` | Dispatched from a feature branch | Deposit from a tag or `main`; use `dry_run` to build from a branch |
+| AWS step fails with `Not authorized to perform sts:AssumeRoleWithWebIdentity` | Role trust policy changed, or the secret points at the wrong account | Check the ARN against the `GithubOidcSageBionetworksItSageBrainInfraAmpAls` task in organizations-infra |
 | `snapshot_date '...' is not YYYY-MM-DD` | Bad manual input | The loader rejects any other shape; use e.g. `2026-09-14` |
 | Files uploaded but nothing loads into Neptune | `manifest.ttl` not at `als/YYYY-MM-DD/manifest.ttl` | The loader parses exactly three key segments; check the prefix |
 | Load fails on a snapshot that uploaded cleanly | A non-Turtle object under `data/` | The bulk loader parses everything under the prefix as Turtle; move it to a sibling folder |
