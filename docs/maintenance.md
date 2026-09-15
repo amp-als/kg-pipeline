@@ -121,6 +121,187 @@ examples (shared donor links, mutation sets).
 The most immediate Layer 2 candidate for this pipeline is the file↔dataset link via GEO accession —
 see `docs/architecture.md` for the proposed SPARQL CONSTRUCT pattern.
 
+## Depositing to Sage Brain
+
+Building and publishing are separate workflows, so a build can be produced and
+inspected without anything reaching Sage Brain, and a deposit always names the
+build it is publishing.
+
+| Workflow | Does | Never does |
+|---|---|---|
+| `build-graph.yml` — *Build graph snapshot* | Extract, generate, validate, upload the `kg-snapshot` artifact | Touch AWS (unless dispatched with `deposit: true`, which hands off to the workflow below) |
+| `deposit-sagebrain.yml` — *Deposit to Sage Brain* | Download a build's artifact, re-verify it, upload it to S3 | Build, or alter what the build produced |
+
+The Sage Brain append-only ingestion pipeline then bulk-loads the snapshot into
+Neptune. See [sagebrain-infra#39](https://github.com/Sage-Bionetworks-IT/sagebrain-infra/pull/39).
+
+### How it runs
+
+**Build.** Runs on a `v*` tag push, or manually from any branch. Extraction is
+anonymous (portal Layer 1 metadata is public), so no Synapse credentials are
+needed and a build from any branch is harmless. A build leaves two artifacts:
+`kg-snapshot` (90 days — exactly the bytes a deposit would upload, plus
+`build-metadata.json`) and `kg-intermediates` (14 days — raw exports, CSVs, RML
+logs, for debugging a bad build).
+
+**Deposit.** Three ways to reach it, in increasing order of automation:
+
+| Path | How | When to use |
+|---|---|---|
+| Deposit an existing build | Run *Deposit to Sage Brain* with `build_run_id` = a successful build run | The normal path — look at the build first, publish it after |
+| Build and deposit | Run *Build graph snapshot* with `deposit: true` | A release you already intend to publish |
+| Rehearse | *Deposit to Sage Brain* with `dry_run: true` | Check the payload and manifest with no upload |
+
+A tag push builds only. Tagging publishes nothing on its own; depositing is
+always an explicit choice.
+
+The deposit job authenticates to AWS via GitHub OIDC using the
+`SAGEBRAIN_ROLE_ARN` repository secret — no long-lived keys.
+
+### Confirming a deposit
+
+The deposit job runs in the `sagebrain-prod` environment. Add **required
+reviewers** to that environment (repo Settings → Environments) and every deposit,
+chained or standalone, pauses for approval before it fetches or uploads anything.
+Restrict the environment's deployment branches too, if the OIDC trust policy is
+ever widened.
+
+Two further guards make publishing deliberate rather than incidental:
+
+- a named `build_run_id` must be a **successful** run of `build-graph.yml` in
+  this repo — a failed or unrelated run is rejected before the download;
+- an S3 prefix that already holds a snapshot for the target date fails the run
+  unless it was dispatched with `allow_overwrite: true`.
+
+### One-time setup: `SAGEBRAIN_ROLE_ARN`
+
+The IAM role is already provisioned for this repo by Sage IT — see the
+`GithubOidcSageBionetworksItSageBrainInfraAmpAls` task in
+[organizations-infra `org-formation/650-identity-providers/_tasks.yaml`](https://github.com/Sage-Bionetworks-IT/organizations-infra/blob/main/org-formation/650-identity-providers/_tasks.yaml).
+Only the repository secret is missing:
+
+```bash
+gh secret set SAGEBRAIN_ROLE_ARN --repo amp-als/kg-pipeline \
+  --body "arn:aws:iam::620117233256:role/sagebase-github-oidc-sage-bionetworks-it-sagebrain-infra-als"
+```
+
+`620117233256` is `org-sagebase-sagebrain-prod`, which holds the `app-prod-neptune-*`
+bucket. The same role name exists in the dev account (`org-sagebase-sagebrain-dev`)
+if a dev target is ever wanted.
+
+The role grants S3 only — `ListBucket` plus `PutObject`/`GetObject`/`DeleteObject`
+on `app-*-neptune-neptunedatabucket*`. That covers `sync --delete`; it grants no
+Neptune access, since loading is the pipeline's job, not ours.
+
+**Trusted refs.** The trust policy accepts `refs/tags/*`, `refs/heads/main` and
+`refs/heads/develop` only, and that applies to the ref the *deposit* runs from.
+Deposits from a tag or `main` work; one dispatched from a feature branch is
+rejected up front. Builds are unaffected — they use no credentials, so a feature
+branch can build freely and the resulting artifact can be deposited later from
+`main`.
+
+### What lands in S3
+
+```
+s3://<NeptuneDataBucketName>/als/YYYY-MM-DD/
+    data/schema/ontology.ttl
+    data/rdf/files.ttl
+    data/rdf/datasets.ttl
+    data/_provenance.ttl    ← build lineage, inside the load path
+    manifest.ttl            ← uploaded LAST
+```
+
+`data/` is the `kg-snapshot` artifact verbatim; the deposit adds only the two
+manifest copies. The manifest records the *build's* commit, ref, run URL and
+timestamp alongside the deposit run that published it, so a snapshot in Neptune
+points back at the build that made it rather than at whoever pressed the button.
+
+`manifest.ttl` is the completion sentinel: its `ObjectCreated` event triggers the
+Neptune bulk load into `urn:sagebrain:als:YYYY-MM-DD`. Upload order matters — if
+the manifest landed first, the loader would fire against an incomplete snapshot.
+
+### Why everything loadable lives under `data/`
+
+[sagebrain-infra#42](https://github.com/Sage-Bionetworks-IT/sagebrain-infra/pull/42)
+(open at time of writing) narrows the load path from the whole dated folder to the
+`data/` subprefix, because Neptune's bulk loader takes a *literal* S3 prefix — no
+glob, no extension filter — and parses every object under it as Turtle. With
+`failOnError=TRUE`, one stray non-RDF object fails the entire snapshot.
+
+This layout satisfies both loaders: the current one loads the whole folder (all
+Turtle, so it succeeds), and #42 loads `data/` (which holds the ontology and the
+graph). Keep `data/` Turtle-only; anything else belongs in a sibling folder such
+as `other/`.
+
+#42 also moves the sentinel out of the load path, so the manifest's triples would
+no longer reach Neptune. `data/_provenance.ttl` is a byte-identical copy deposited
+*inside* the load path, which keeps build lineage (run URL, commit, triple count)
+queryable. Under the current loader both files are read into the same named graph;
+identical triples, so nothing to de-duplicate.
+
+### Gates before the deposit
+
+The load runs with `failOnError=TRUE` and never deletes, so a bad snapshot is
+permanent.
+
+In the build, every step must pass before an artifact exists at all:
+
+`make check-config` → `make extract` → `make rdf` → `validate_fks.py --strict`
+→ `make test` → `make sparql` → Turtle-only `data/`, non-zero triple count in
+every `.ttl`
+
+In the deposit, the downloaded artifact is re-checked before any upload: every
+file under `data/` is Turtle, parses, is non-empty, and the total matches the
+triple count the build recorded in `build-metadata.json`. A mismatch means the
+artifact is not what was validated, and the run stops.
+
+Then, after the upload but before `manifest.ttl` fires the load, the *destination*
+is checked: `als/YYYY-MM-DD/data/` must hold only `.ttl` keys, and exactly as many
+as were uploaded. The load path is whatever sits under the prefix at sentinel
+time — not only what this run wrote — so this catches a leftover from an aborted
+run or anything else that wrote there. The sync itself is unfiltered on purpose:
+`--exclude "*" --include "*.ttl"` would apply to the destination listing too, and
+`--delete` would then leave a stray non-Turtle object in place instead of sweeping
+it away.
+
+### Re-running on the same date
+
+A date that already holds a snapshot is refused unless the run sets
+`allow_overwrite: true`. With it set, `aws s3 sync --delete` fully replaces the
+day's files (a plain `cp` would leave renamed or dropped files behind, and the
+loader ingests everything under the prefix). Re-uploading `manifest.ttl` gives it
+a new etag, which the Sage Brain loader treats as a genuine re-publish and
+reloads. A duplicate event with an unchanged etag is skipped.
+
+### Querying a snapshot
+
+Neptune's SPARQL default graph is the union of all named graphs, so an unscoped
+query returns every snapshot merged. Scope to one build:
+
+```sparql
+SELECT (COUNT(*) AS ?n) WHERE { GRAPH <urn:sagebrain:als:2026-09-14> { ?s ?p ?o } }
+```
+
+### Troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `secret SAGEBRAIN_ROLE_ARN is not set` | Repo secret missing | Add the IAM role ARN from the sagebrain account as a repository secret |
+| `'<branch>' is not trusted by the OIDC role` | Deposit dispatched from a feature branch | Deposit from a tag or `main`; the build itself runs anywhere |
+| `run <id> is '<name>', not build-graph.yml` | `build_run_id` points at another workflow's run | Copy the run ID from a *Build graph snapshot* run |
+| `build run <id> concluded 'failure'` | Naming a build that did not pass its gates | Fix the build and deposit the successful run |
+| `artifact holds N triples, build recorded M` | Artifact does not match what the build validated | Re-run the build and deposit that run |
+| `already holds a snapshot` | Date was published before | Re-run with `allow_overwrite`, or pick another `snapshot_date` |
+| Deposit job sits in *Waiting* | `sagebrain-prod` has required reviewers | Approve the run from the run page |
+| `Artifact not found: kg-snapshot` | Build older than the 90-day retention | Re-run the build |
+| AWS step fails with `Not authorized to perform sts:AssumeRoleWithWebIdentity` | Role trust policy changed, or the secret points at the wrong account | Check the ARN against the `GithubOidcSageBionetworksItSageBrainInfraAmpAls` task in organizations-infra |
+| `snapshot_date '...' is not YYYY-MM-DD` | Bad manual input | The loader rejects any other shape; use e.g. `2026-09-14` |
+| Files uploaded but nothing loads into Neptune | `manifest.ttl` not at `als/YYYY-MM-DD/manifest.ttl` | The loader parses exactly three key segments; check the prefix |
+| `non-Turtle objects under s3://.../data/` | Something other than this deposit wrote to the load path | Remove or move the object to a sibling folder, then re-run the deposit |
+| `holds N objects, expected M` | The prefix was written to concurrently, or a sync was interrupted | Re-run the deposit with `allow_overwrite`; no sentinel was written, so nothing loaded |
+| Load fails on a snapshot that uploaded cleanly | A non-Turtle object appeared under `data/` after the deposit | The bulk loader parses everything under the prefix as Turtle; move it to a sibling folder |
+| `parsed to zero triples — refusing to publish` | RMLMapper produced an empty graph | Check the `kg-intermediates` artifact (`logs/*_rml.log`) and the source CSVs |
+
 ## Test failures
 
 | Symptom | Likely cause | Fix |

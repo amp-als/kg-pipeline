@@ -1,0 +1,215 @@
+# Build and validate an ALS KP knowledge graph snapshot.
+#
+# Building and publishing are separate: the build job never touches AWS. It
+# produces a `kg-snapshot` artifact that is exactly what a deposit would upload,
+# so a build can be run and inspected from any branch.
+#
+# Depositing is opt-in. Dispatch with `deposit: true` to hand this run's artifact
+# straight to `.github/workflows/deposit-sagebrain.yml`; otherwise the run stops
+# at the artifact and it can be deposited later — by that workflow, given this
+# run's ID. Either path uploads the artifact unchanged and pauses for whatever
+# protection rules the `sagebrain-prod` environment carries.
+#
+#   kg-snapshot.zip
+#     data/schema/ontology.ttl  <- ontology
+#     data/rdf/*.ttl            <- generated graph data
+#     build-metadata.json       <- commit, run, triple counts (not deposited as-is)
+#
+# Everything loadable sits under `data/` because Neptune's bulk loader takes a
+# literal prefix with no glob or extension filter and runs with failOnError=TRUE.
+# `data/` therefore holds Turtle and nothing else; the staging step enforces it.
+#
+# Synapse extraction is anonymous — portal Layer 1 metadata is public.
+
+name: Build graph snapshot
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      deposit:
+        description: "Deposit to Sage Brain if the build passes"
+        type: boolean
+        default: false
+      snapshot_date:
+        description: "Deposit only — snapshot date YYYY-MM-DD (default: today, UTC)"
+        type: string
+        required: false
+      allow_overwrite:
+        description: "Deposit only — allow replacing an existing snapshot for that date"
+        type: boolean
+        default: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+# Superseded builds on a ref are cancellable — unless this run is also the one
+# depositing, since cancelling the run would cancel the deposit job with it.
+concurrency:
+  group: build-graph-${{ github.ref }}
+  cancel-in-progress: ${{ inputs.deposit != true }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Cache RMLMapper
+        id: rmlmapper-cache
+        uses: actions/cache@v5
+        with:
+          path: tools/rmlmapper-*.jar
+          # Makefile pins RMLMAPPER_VERSION, so a version bump busts the cache.
+          key: rmlmapper-${{ hashFiles('Makefile') }}
+
+      - name: Download RMLMapper
+        if: steps.rmlmapper-cache.outputs.cache-hit != 'true'
+        run: make download-jar
+
+      # ---------------------------------------------------------------- build
+      - name: Check config consistency
+        run: make check-config
+
+      - name: Extract portal tables from Synapse
+        run: make extract
+
+      - name: Generate RDF
+        run: make rdf
+
+      # ------------------------------------------------------------- validate
+      # Every check below gates the artifact, and the deposit workflow only
+      # accepts artifacts from a successful run: the Sage Brain pipeline loads
+      # with failOnError=TRUE and never deletes, so a bad snapshot is permanent.
+      - name: Validate FK constraints
+        run: python3 scripts/validate_fks.py --strict
+
+      - name: Run unit tests
+        run: make test
+
+      - name: Run SPARQL use-case checks
+        run: make sparql
+
+      # -------------------------------------------------------------- package
+      - name: Stage snapshot
+        run: |
+          mkdir -p snapshot/data/schema snapshot/data/rdf
+          cp schema/ontology.ttl snapshot/data/schema/
+          cp data/rdf/*.ttl      snapshot/data/rdf/
+          python3 - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+          import pyoxigraph
+
+          root = Path("snapshot/data")
+          paths = sorted(p for p in root.rglob("*") if p.is_file())
+          stray = [str(p) for p in paths if p.suffix != ".ttl"]
+          if stray:
+              raise SystemExit(f"non-Turtle files staged under data/: {stray}")
+          if not list((root / "rdf").glob("*.ttl")):
+              raise SystemExit("data/rdf/ holds no .ttl — refusing to publish an ontology-only snapshot")
+
+          counts, rows, total = {}, [], 0
+          for path in paths:
+              store = pyoxigraph.Store()
+              store.load(path.open("rb"), format=pyoxigraph.RdfFormat.TURTLE)
+              if not len(store):
+                  raise SystemExit(f"{path} parsed to zero triples — refusing to publish")
+              rel = str(path.relative_to(root.parent))
+              counts[rel] = len(store)
+              total += len(store)
+              rows.append(f"| `{rel}` | {len(store):,} |")
+
+          env = os.environ
+          Path("snapshot/build-metadata.json").write_text(json.dumps({
+              "repository": env["GITHUB_REPOSITORY"],
+              "git_commit": env["GITHUB_SHA"],
+              "git_ref": env["GITHUB_REF_NAME"],
+              "git_ref_type": env["GITHUB_REF_TYPE"],
+              "build_run_id": env["GITHUB_RUN_ID"],
+              "build_run_attempt": env["GITHUB_RUN_ATTEMPT"],
+              "build_run_url": f"{env['GITHUB_SERVER_URL']}/{env['GITHUB_REPOSITORY']}/actions/runs/{env['GITHUB_RUN_ID']}",
+              "built_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+              "triples": total,
+              "file_triples": counts,
+          }, indent=2) + "\n")
+
+          Path("graph-summary.md").write_text(
+              "## Graph contents\n\n| File | Triples |\n|---|---:|\n"
+              + "\n".join(rows)
+              + f"\n| **Total** | **{total:,}** |\n"
+          )
+          PY
+          cat graph-summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload snapshot
+        uses: actions/upload-artifact@v7
+        with:
+          name: kg-snapshot
+          path: snapshot/
+          if-no-files-found: error
+          retention-days: 90
+
+      # Intermediates for debugging a build; the deposit never reads these.
+      - name: Upload build intermediates
+        uses: actions/upload-artifact@v7
+        with:
+          name: kg-intermediates
+          path: |
+            data/raw/
+            data/csv/
+            logs/
+          retention-days: 14
+
+      - name: Report deposit status
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          DEPOSIT: ${{ inputs.deposit }}
+        run: |
+          {
+            echo ""
+            if [ "$DEPOSIT" = "true" ]; then
+              echo "## Depositing"
+              echo ""
+              echo "The deposit job takes it from here."
+            else
+              echo "## Not deposited"
+              echo ""
+              echo "This run built only. To publish this snapshot, run **Deposit to Sage Brain**"
+              echo "with \`build_run_id\` = \`${{ github.run_id }}\` ([this run]($RUN_URL))."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Opt-in chaining: same run, same artifact, same environment gate as a
+  # standalone deposit. A tag push builds only — `inputs` is empty there.
+  deposit:
+    needs: build
+    if: inputs.deposit == true
+    uses: ./.github/workflows/deposit-sagebrain.yml
+    with:
+      snapshot_date: ${{ inputs.snapshot_date }}
+      allow_overwrite: ${{ inputs.allow_overwrite }}
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    secrets: inherit
